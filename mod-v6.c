@@ -3,7 +3,9 @@
 
 int main()
 { 
-    bool x = true;
+    // checks condition of whether or not the 
+    // user wants to continue to give commands
+    bool x = true; 
 
     while(x == true){
         char testCommand[25];
