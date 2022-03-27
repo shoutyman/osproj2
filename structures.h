@@ -7,16 +7,6 @@
 
 const int BLOCK_SIZE = 1024;    //the number of bytes in a block
 
-//directory for i-nodes?
-typedef struct directory {
-    int isize;
-    int fsize;
-    int nfree;
-    unsigned int free[200]; char flock;
-    char ilock;
-    char fmod; unsigned int time;
-}
-
 //definition of superblock
 typedef struct {
     int isize;
