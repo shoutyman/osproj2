@@ -1,6 +1,6 @@
 #include <stdio.h>    
 #include <stdbool.h>
-#include "./structures.h" //contains the definitions for superblock, i-node, directory, etc.
+#include "structures.h" //contains the definitions for superblock, i-node, directory, etc.
 
 /*
 * TODO: initfs()
