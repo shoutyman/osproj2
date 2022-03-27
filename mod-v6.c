@@ -11,13 +11,8 @@
 */
 int initfs(char* filename, int fsize, int isize) {
     return 0;
+    
 }
-
-
-ssize_t lseek(int fd, off_t offset, int whence);
-ssize_t read(int fd, void *buf, size_t nbytes);
-ssize_t write(int fd, const void *buf, size_t count); // buf is the data that is to be stored
-int open(const char *pathname, int flags);
 
 int main()
 { 
