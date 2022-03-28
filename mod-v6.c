@@ -4,6 +4,9 @@
 #include <fcntl.h>  //includes constants useful for manipulating files 
 
 #include "./structures.h" //contains the definitions for superblock, i-node, directory, etc.
+#include <unistd.h> // required for read command
+#include <sys/types.h> // required for lseek 
+#include <fcntl.h>
 
 /*
 * TODO: initfs()
