@@ -6,6 +6,7 @@
 */
 
 const int BLOCK_SIZE = 1024;    //the number of bytes in a block
+const int INODE_SIZE = 64;
 
 //definition of superblock
 typedef struct {
