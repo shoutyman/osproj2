@@ -87,11 +87,19 @@ int main()
     superblock_type superblock = get_superblock(fd);
     fprintf(stderr, "Done\n");
 
-   
-    // if(testCommand[]) // test more commands
-    if (testCommand[0] == 'q') {
-        x = false;
-        printf("\rSystem Exited. Thank you.\r");
+    // checks condition of whether or not the 
+    // user wants to continue to give commands
+    bool x = true;
+
+    while (x == true) {
+        char testCommand[25];
+        printf("What is your command? ");
+        scanf("%s", testCommand);
+        // if(testCommand[]) // test more commands
+        if (testCommand[0] == 'q') {
+            x = false;
+            printf("\rSystem Exited. Thank you.\r");
+        }
     }
     return 0;
 }
