@@ -82,18 +82,18 @@ int main()
     //initialize the filesystem
     fprintf(stderr, "Initializing v6 filesystem...\n");
     int fd = initfs();
-
     //get the superblock
     fprintf(stderr, "Fetching superblock...\n");
     superblock_type superblock = get_superblock(fd);
-    
-    //TESTING: fetch fields of superblock
-    fprintf(stderr, "Verifying superblock integrity...\n");
-    assert(superblock.isize == 2);
-    assert(superblock.fsize == 10);
-    assert(superblock.nfree == 7);
-
     fprintf(stderr, "Done\n");
+
+   
+    // if(testCommand[]) // test more commands
+    if (testCommand[0] == 'q') {
+        x = false;
+        printf("\rSystem Exited. Thank you.\r");
+    }
+    return 0;
 }
 
 void add_free_block(int); // Method we need to modify
