@@ -2,6 +2,7 @@
 #include <stdbool.h>
 #include <unistd.h> //includes system calls for reading/writing files
 #include <fcntl.h>  //includes constants useful for manipulating files 
+#include <assert.h> //TESTING: allows use of assert() macro
 
 #include "./structures.h" //contains the definitions for superblock, i-node, directory, etc.
 #include <unistd.h> // required for read command
@@ -15,7 +16,6 @@
 */
 int initfs(const char* filename = "my_v6", int fsize = 10, int isize = 2) {
     int fd = open(filename, O_RDWR | O_CREAT | O_TRUNC, 0600);
-
     if (fd != -1) { //the file was created successfully    
         //initialize the superblock
         superblock_type new_superblock;
@@ -40,13 +40,13 @@ int initfs(const char* filename = "my_v6", int fsize = 10, int isize = 2) {
             write(fd, empty_block, BLOCK_SIZE);
         }
         //write the superblock as the second block
-        lseek(fd, BLOCK_SIZE * 1, SEEK_SET);
+        lseek(fd, BLOCK_SIZE, SEEK_SET);
         write(fd, &new_superblock, sizeof(superblock_type));
 
     }
 
     //return the file descriptor of the file for use
-    fd = lseek(fd, 0, SEEK_SET);
+    lseek(fd, 0, SEEK_SET);
     return fd;
 }
 
@@ -64,27 +64,36 @@ inode_type inode_reader(int fd, int inum, inode_type inode) {
     return inode;
 }
 
+//  Function to get the contents of the superblock
+superblock_type get_superblock(int fd) {
+    superblock_type superblock;
+    lseek(fd, BLOCK_SIZE, SEEK_SET);    //superblock is always second block of filesystem
+    assert(fd != 0 && fd != 1 && fd != 2);
+    read(fd, &superblock, sizeof(superblock));
+    return superblock;
+}
+
+void update_superblock(superblock_type newsuper) {
+
+}
+
 int main()
 { 
     //initialize the filesystem
+    fprintf(stderr, "Initializing v6 filesystem...\n");
     int fd = initfs();
 
-    // checks condition of whether or not the 
-    // user wants to continue to give commands
-    bool x = true; 
+    //get the superblock
+    fprintf(stderr, "Fetching superblock...\n");
+    superblock_type superblock = get_superblock(fd);
+    
+    //TESTING: fetch fields of superblock
+    fprintf(stderr, "Verifying superblock integrity...\n");
+    assert(superblock.isize == 2);
+    assert(superblock.fsize == 10);
+    assert(superblock.nfree == 7);
 
-    while(x == true){
-        char testCommand[25];
-        printf("What is your command? ");
-        scanf("%s", testCommand);  
-
-       // if(testCommand[]) // test more commands
-        if(testCommand[0] == 'q'){
-            x = false;
-            printf("\rSystem Exited. Thank you.\r");
-        }
-    }
-    return 0;
+    fprintf(stderr, "Done\n");
 }
 
 void add_free_block(int); // Method we need to modify
