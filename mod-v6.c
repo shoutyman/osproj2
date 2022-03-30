@@ -29,8 +29,10 @@ int initfs(const char* filename = "my_v6", int fsize = 10, int isize = 2) {
             new_superblock.nfree = 200;
         }
         //populate the free[] array
-        for (int counter = 0; counter < new_superblock.nfree; counter++) {
-            new_superblock.free[counter] = counter;
+        int firstFreeBlock = isize + 1;
+
+        for (int counter = firstFreeBlock; counter < new_superblock.nfree; counter++) {
+            new_superblock.free[counter] = counter + firstFreeBlock;
         }
 
         //CREATE THE FILESYSTEM
@@ -74,7 +76,9 @@ superblock_type get_superblock(int fd) {
 }
 
 void update_superblock(superblock_type newsuper) {
-
+    lseek(fd, BLOCK_SIZE, SEEK_SET);
+    assert(fd != 0 && fd != 1 && fd != 2);
+    write(fd, &newsuper, BLOCK_SIZE);
 }
 
 int main()
