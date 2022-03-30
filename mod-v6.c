@@ -73,8 +73,30 @@ superblock_type get_superblock(int fd) {
     return superblock;
 }
 
+//  Function to update filesystem from superblock in memory
 void update_superblock(superblock_type newsuper) {
 
+}
+
+//TODO: adds a block to the free list
+void add_free_block(int){} // Method we need to modify
+
+//TODO: gets the address of a free block from the filesystem referenced by fd
+int get_free_block(int fd){
+    superblock_type superblock = get_superblock()
+    superblock.nfree--;
+    if (superblock.nfree > 0){  //nfree contains blocks
+        if (superblock.free[superblock.nfree] == 0){
+            fprintf(stderr, "Error: Filesystem full, could not allocate block");
+        } else {
+            return superblock.free[superblock.nfree];
+        }
+    } else {
+        //TODO: currently, nfree is a simple array, not a block chain
+        //      therefore this state currently indicates an empty filesystem
+        fprintf(stderr, "Error: Filesystem full, could not allocate block");
+    }
+    return 0;
 }
 
 int main()
@@ -104,5 +126,5 @@ int main()
     return 0;
 }
 
-void add_free_block(int); // Method we need to modify
-void get_free_block(); // Method we need to modify
+
+
