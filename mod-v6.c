@@ -96,7 +96,7 @@ int main() {
     printf("To create a file system enter: EX. <initfs CDrive 400 20> \n");
 
 
-    // Sets a limit to user input command length 
+    // Sets a limit to user input length 
     char userInput[100];
 
     while (1) { // Will run the system until user enters "q"
