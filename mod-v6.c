@@ -1,3 +1,6 @@
+//Project 2 for CS 4348.005 Operating Systems Concepts Spring 2022
+//Authors: Alex Wan, Isabelle Villegas, Leonel Perez
+
 #include <stdio.h>    
 #include <stdbool.h>
 #include <unistd.h> //includes system calls for reading/writing files
