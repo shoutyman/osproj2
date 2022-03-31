@@ -5,6 +5,7 @@
 #include <assert.h> //TESTING: allows use of assert() macro
 #include <time.h>   //used to create and update timestamps
 #include <cstring>  //contains functions for string comparison, to parse user inputs
+#include <stdlib.h> //contains the atoi() function to get information from the user
 
 #include "./structures.h" //contains the definitions for superblock, i-node, directory, etc.
 #include <unistd.h> // required for read command
@@ -31,6 +32,7 @@ void write_superblock(int blocknum);//writes superblock object newSuper to the s
 * Returns a file descriptor pointing to the new file, or -1 if the file could not be created
 */
 int initfs(const char* filename = "my_v6", int fsize = 10, int isize = 2) {
+    fprintf(stderr, "Initializing filesystem\n");
     fd = open(filename, O_RDWR | O_CREAT | O_TRUNC, 0600);
     if (fd != -1) { //the file was created successfully    
         //initialize the superblock
@@ -180,26 +182,25 @@ int main()
 {
     ready = false;
     bool running = true;
-    char command[64] = {0};
+    char input[64] = {" "};
+    char* token;
 
     while (running){    //get user input
         fprintf(stdout, "Enter a command:\n");
-        scanf("%s", command);
+        scanf(" %[^\n]s", input);
+        token = strtok(input, " ");
 
-        if (strcmp(command, "q") == 0){   //exit the program
+        if (strcmp(token, "q") == 0){   //exit the program
             fprintf(stdout, "Exiting v6 filesystem\n");
             exit();
             running = false;
-        } else if (strcmp(command, "initfs") == 0){ //initialize the filesystem
-            char filename[64] = {0};
+        } else if (strcmp(token, "initfs") == 0){ //initialize the filesystem
+            char* filename;
             int fsize = 0, isize = 0;
-            fprintf(stdout, "Enter filesystem name\n");
-            scanf("%s", filename);
-            fprintf(stdout, "Enter number of blocks\n");
-            scanf("%d", &fsize);
-            fprintf(stdout, "Enter number of i-node blocks\n");
-            scanf("%d", &isize);
-            fprintf(stdout, "Initializing v6 filesystem\n");
+          
+            filename = strtok(NULL, " ");
+            fsize = atoi(strtok(NULL, " "));
+            isize = atoi(strtok(NULL, " "));
             initfs(filename, fsize, isize);
         } else {    //command was not recognized
             fprintf(stdout, "Command not recognized, enter a new command\n");
