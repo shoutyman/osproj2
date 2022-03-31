@@ -91,6 +91,7 @@ void update_superblock() {
     write_superblock(1);
 }
 
+
 //  write_superblock(): copies superblock in memory to specified block
 void write_superblock(int blocknum) {
     superblock.time = (unsigned int)time(NULL);
@@ -158,16 +159,27 @@ int get_free_block(){
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 int main()
-{ 
+{
     //initialize the filesystem
     fprintf(stderr, "Initializing v6 filesystem...\n");
+
     fd = initfs("my_v6", 400, 10);
 
-    int blockNum = get_free_block();
-    while (blockNum != -1) {
-        blockNum = get_free_block();
-        fprintf(stdout, "Block address received: %d\n", blockNum);
-    }   
 
+    // checks condition of whether or not the 
+    // user wants to continue to give commands
+    bool x = true;
+
+    while (x == true) {
+        char testCommand[25];
+        printf("What is your command? ");
+        scanf("%s", testCommand);
+        // if(testCommand[]) // test more commands
+        if (testCommand[0] == 'q') {
+            x = false;
+            printf("\rSystem Exited. Thank you.\r");
+        }
+    }
     return 0;
+
 }
