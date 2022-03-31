@@ -1,9 +1,6 @@
 mod-v6: mod-v6.c structures.h
-	g++ -o mod-v6 mod-v6.c structures.h
+	g++ -o mod-v6 mod-v6.c
 	
-mod-v6.o: mod-v6.c
-
-.PHONY: all clean
 
 all: mod-v6
 
