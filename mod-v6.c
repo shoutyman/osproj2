@@ -24,7 +24,7 @@ void add_free_block(unsigned int block); //adds a free block to the filesystem
 void write_superblock(int blocknum);//writes superblock object newSuper to the specified block
 
 /*
-* TODO: initfs()
+* initfs()
 * Initializes the filesystem on file filename, with fsize total blocks and isize i-node blocks
 * Returns a file descriptor pointing to the new file, or -1 if the file could not be created
 */
@@ -112,7 +112,7 @@ void print_superblock() {
     fprintf(stdout, "Time last modified: %d\n", superblock.time);
 }
 
-//TODO: adds a block to the free list
+//adds a block to the free list
 void add_free_block(unsigned int block) {
     if (block < superblock.fsize && block >= superblock.isize + 2) {//check filesystem bounds
         if (superblock.nfree == 200) { //current superblock is full; create a new superblock and copy old one to filesystem
@@ -133,7 +133,7 @@ void add_free_block(unsigned int block) {
     }
 }
 
-//TODO: gets the address of a free block from the filesystem referenced by fd
+//gets the address of a free block from the filesystem referenced by fd
 int get_free_block(){
     superblock.nfree--;
     if (superblock.nfree != 0){  //current superblock is not empty
