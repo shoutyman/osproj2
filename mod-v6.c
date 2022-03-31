@@ -14,7 +14,7 @@
 // GLOBAL VARS //////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 int fd; //file descriptor of the file containing the filesystem
-superblock_type superblock;
+superblock_type superblock; //the current superblock, stored in memory
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // FUNCTION PROTOTYPES //////////////////////////////////////////////////////////////////////////////////////////////
@@ -36,6 +36,12 @@ int initfs(const char* filename = "my_v6", int fsize = 10, int isize = 2) {
         superblock.isize = isize;
         superblock.time = static_cast<unsigned int>(time(NULL));
 
+        //create the underlying file: (fsize - 1) empty blocks
+        char empty_block[1024] = { 0 };
+        for (int counter = 0; counter < fsize; counter++) {
+            write(fd, empty_block, BLOCK_SIZE);
+        }
+
         //populate the free[] array
         superblock.free[1] = 0;
         superblock.nfree = 2;
@@ -43,15 +49,8 @@ int initfs(const char* filename = "my_v6", int fsize = 10, int isize = 2) {
             add_free_block(counter);
         }
 
-        //create the underlying file: (fsize - 1) empty blocks
-        char empty_block[1024] = { 0 };
-        for (int counter = 0; counter < fsize; counter++) {
-            write(fd, empty_block, BLOCK_SIZE);
-        }
         //write the superblock as the second block
-        lseek(fd, BLOCK_SIZE, SEEK_SET);
-        write(fd, &superblock, sizeof(superblock_type));
-
+        write_superblock(1);
     }
 
     //return the file descriptor of the file for use
@@ -83,7 +82,6 @@ inode_type inode_reader(int inum, inode_type inode) {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //  updates the superblock in memory with data from filesystem at block address blocknum
 void get_superblock(int blocknum) {
-    superblock;
     lseek(fd, blocknum * BLOCK_SIZE, SEEK_SET); 
     read(fd, &superblock, sizeof(superblock_type));
 }
@@ -101,6 +99,13 @@ void write_superblock(int blocknum) {
     write(fd, &superblock, sizeof(superblock_type));
 }
 
+//  write_superblock(): copies passed superblock object to specified block
+void write_superblock(int blocknum, superblock_type block_to_write) {
+    block_to_write.time = (unsigned int)time(NULL);
+    lseek(fd, blocknum * BLOCK_SIZE, SEEK_SET);
+    write(fd, &block_to_write, sizeof(superblock_type));
+}
+
 //  outputs the contents of the superblock object in memory
 void print_superblock() {
     fprintf(stdout, "Number of blocks: %d\n", superblock.fsize);
@@ -110,16 +115,13 @@ void print_superblock() {
 
 //TODO: adds a block to the free list
 void add_free_block(unsigned int block) {
-    if (block < superblock.fsize && block >= superblock.isize + 2) {
+    if (block < superblock.fsize && block >= superblock.isize + 2) {//check filesystem bounds
         if (superblock.nfree == 200) { //current superblock is full; create a new superblock and copy old one to filesystem
-            superblock_type newSuper;
-            newSuper.fsize = superblock.fsize;
-            newSuper.isize = superblock.isize;
-            newSuper.nfree = 1;
-
+            fprintf(stderr, "Superblock capacity exceeded, creating new superblock\n");
             write_superblock(block);
-            superblock = newSuper;
-            update_superblock();
+            
+            superblock.free[0] = block;
+            superblock.nfree = 1;
         }
         else {
             superblock.free[superblock.nfree] = block;
@@ -135,7 +137,7 @@ void add_free_block(unsigned int block) {
 //TODO: gets the address of a free block from the filesystem referenced by fd
 int get_free_block(){
     superblock.nfree--;
-    if (superblock.nfree > 0){  //current superblock is not empty
+    if (superblock.nfree != 0){  //current superblock is not empty
         if (superblock.free[superblock.nfree] == 0){
             fprintf(stderr, "Error: Filesystem empty, could not allocate block\n");
             return -1;
@@ -145,11 +147,11 @@ int get_free_block(){
         }
     }
     else {    //the current superblock is empty; fetch new superblock from filesystem
-        get_superblock(superblock.free[superblock.nfree]);
-        return superblock.free[superblock.nfree];
+        get_superblock(superblock.free[0]);
+        return get_free_block();
     }
     //should never reach this state
-    fprintf(stderr, "Unknown error in allocating block");
+    fprintf(stderr, "Unknown error while allocating block");
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -160,11 +162,9 @@ int main()
 {
     //initialize the filesystem
     fprintf(stderr, "Initializing v6 filesystem...\n");
-    int fd = initfs();
-    //get the superblock
-    fprintf(stderr, "Fetching superblock...\n");
-    superblock_type superblock = get_superblock(fd);
-    fprintf(stderr, "Done\n");
+
+    fd = initfs("my_v6", 400, 10);
+
 
     // checks condition of whether or not the 
     // user wants to continue to give commands
@@ -181,6 +181,5 @@ int main()
         }
     }
     return 0;
+
 }
-
-
