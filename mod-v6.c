@@ -4,6 +4,7 @@
 #include <fcntl.h>  //includes constants useful for manipulating files 
 #include <assert.h> //TESTING: allows use of assert() macro
 #include <time.h>   //used to create and update timestamps
+#include <cstring>  //contains functions for string comparison, to parse user inputs
 
 #include "./structures.h" //contains the definitions for superblock, i-node, directory, etc.
 #include <unistd.h> // required for read command
@@ -15,6 +16,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 int fd; //file descriptor of the file containing the filesystem
 superblock_type superblock; //the current superblock, stored in memory
+bool ready; //indicates whether the filesystem is ready for use
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // FUNCTION PROTOTYPES //////////////////////////////////////////////////////////////////////////////////////////////
@@ -55,6 +57,7 @@ int initfs(const char* filename = "my_v6", int fsize = 10, int isize = 2) {
 
     //return the file descriptor of the file for use
     lseek(fd, 0, SEEK_SET);
+    ready = true;
     return fd;
 }
 
@@ -90,6 +93,7 @@ void get_superblock(int blocknum) {
 void update_superblock() {
     write_superblock(1);
 }
+
 
 //  write_superblock(): copies superblock in memory to specified block
 void write_superblock(int blocknum) {
@@ -137,8 +141,9 @@ void add_free_block(unsigned int block) {
 int get_free_block(){
     superblock.nfree--;
     if (superblock.nfree != 0){  //current superblock is not empty
-        if (superblock.free[superblock.nfree] == 0){
+        if (superblock.free[superblock.nfree] == 0){//  the filesystem is empty
             fprintf(stderr, "Error: Filesystem empty, could not allocate block\n");
+            superblock.nfree++;
             return -1;
         } else {
             update_superblock();
@@ -146,7 +151,9 @@ int get_free_block(){
         }
     }
     else {    //the current superblock is empty; fetch new superblock from filesystem
+        fprintf(stderr, "Current superblock is empty, fetching superblock from disk\n");
         get_superblock(superblock.free[0]);
+        update_superblock();
         return get_free_block();
     }
     //should never reach this state
@@ -154,20 +161,50 @@ int get_free_block(){
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// GENERAL SYSTEM FUNCTIONS//////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void exit(){    //saves and closes the filesystem
+    if (ready){
+        update_superblock();
+        close(fd);
+        ready = false;
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // TEST MAIN() FUNCTION /////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 int main()
-{ 
-    //initialize the filesystem
-    fprintf(stderr, "Initializing v6 filesystem...\n");
-    fd = initfs("my_v6", 400, 10);
+{
+    ready = false;
+    bool running = true;
+    char command[64] = {0};
 
-    int blockNum = get_free_block();
-    while (blockNum != -1) {
-        blockNum = get_free_block();
-        fprintf(stdout, "Block address received: %d\n", blockNum);
-    }   
+    while (running){    //get user input
+        fprintf(stdout, "Enter a command:\n");
+        scanf("%s", command);
+
+        if (strcmp(command, "q") == 0){   //exit the program
+            fprintf(stdout, "Exiting v6 filesystem\n");
+            exit();
+            running = false;
+        } else if (strcmp(command, "initfs") == 0){ //initialize the filesystem
+            char filename[64] = {0};
+            int fsize = 0, isize = 0;
+            fprintf(stdout, "Enter filesystem name\n");
+            scanf("%s", filename);
+            fprintf(stdout, "Enter number of blocks\n");
+            scanf("%d", &fsize);
+            fprintf(stdout, "Enter number of i-node blocks\n");
+            scanf("%d", &isize);
+            fprintf(stdout, "Initializing v6 filesystem\n");
+            initfs(filename, fsize, isize);
+        } else {    //command was not recognized
+            fprintf(stdout, "Command not recognized, enter a new command\n");
+        }
+    }
 
     return 0;
 }
