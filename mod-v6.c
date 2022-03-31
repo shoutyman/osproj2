@@ -93,6 +93,7 @@ void update_superblock() {
     write_superblock(1);
 }
 
+
 //  write_superblock(): copies superblock in memory to specified block
 void write_superblock(int blocknum) {
     superblock.time = (unsigned int)time(NULL);
