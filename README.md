@@ -26,4 +26,4 @@
   the file, free the i-node and remove the directory entry.
       
   **q** 
-  - Will quit and end and save the program
+  - Will save the program, quit and then end 
