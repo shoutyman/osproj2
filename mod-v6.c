@@ -206,7 +206,10 @@ int main()
             isize = atoi(strtok(NULL, " "));
             initfs(filename, fsize, isize);
         }  
-        else if(strcmp(token, "cpin") == 0){ // 
+        //creates a new file called v6-file in the v6 file system 
+        //and fill the contents of the newly created file with the 
+        //contents of the externalfile
+        else if(strcmp(token, "cpin") == 0){  
             char* filename;
             char* extfile;
 
@@ -214,6 +217,8 @@ int main()
             filename = strtok(NULL, " ");
             cpin(extFile, filename);
         }
+        //if the v6-file exists, create externalfile and make 
+        //the externalfile's contents equal to v6-file
         else if(strcmp(token, "cpout") == 0){ // 
             char* filename;
             char* extfile;
@@ -222,6 +227,9 @@ int main()
             extFile = strtok(NULL, " ");
             cpout(filename, extFile);
         }
+        //will delete the file v6_file from the v6 file system.
+        //Remove all the data blocks of the file, free the 
+        //i-node and remove the directory entry.
         else if(strcmp(token, "rm") == 0){ // 
             char* filename;
             filename = strtok(NULL, " ");
