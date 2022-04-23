@@ -205,7 +205,29 @@ int main()
             fsize = atoi(strtok(NULL, " "));
             isize = atoi(strtok(NULL, " "));
             initfs(filename, fsize, isize);
-        } else {    //command was not recognized
+        }  
+        else if(strcmp(token, "cpin") == 0){ // 
+            char* filename;
+            char* extfile;
+
+            extfile = strtok(NULL, " ");
+            filename = strtok(NULL, " ");
+            cpin(extFile, filename);
+        }
+        else if(strcmp(token, "cpout") == 0){ // 
+            char* filename;
+            char* extfile;
+
+            filename = strtok(NULL, " ");
+            extFile = strtok(NULL, " ");
+            cpout(filename, extFile);
+        }
+        else if(strcmp(token, "rm") == 0){ // 
+            char* filename;
+            filename = strtok(NULL, " ");
+            rm(filename);
+        }
+        else {    //command was not recognized
             fprintf(stdout, "Command not recognized, enter a new command\n");
         }
     }
