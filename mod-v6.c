@@ -1,168 +1,278 @@
-#include <stdio.h>
-#include <unistd.h>    //includes system calls for reading/writing files
-#include <sys/types.h>
-#include <signal.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/stat.h>
-#include <sys/types.h> // required for lseek 
-#include <fcntl.h>     //includes constants useful for manipulating files 
-#include <assert.h>    //TESTING: allows use of assert() macro
-#include "./structures.h" //contains the definitions for superblock, i-node, directory, etc.
-#include <stdbool.h>
+//Project 2 for CS 4348.005 Operating Systems Concepts Spring 2022
+//Authors: Alex Wan, Isabelle Villegas, Leonel Perez
 
+#include <stdio.h>    
+#include <stdbool.h>
+#include <unistd.h> //includes system calls for reading/writing files
+#include <fcntl.h>  //includes constants useful for manipulating files 
+#include <assert.h> //TESTING: allows use of assert() macro
+#include <time.h>   //used to create and update timestamps
+#include <cstring>  //contains functions for string comparison, to parse user inputs
+#include <stdlib.h> //contains the atoi() function to get information from the user
+
+#include "./structures.h" //contains the definitions for superblock, i-node, directory, etc.
+#include <unistd.h> // required for read command
+#include <sys/types.h> // required for lseek 
+#include <fcntl.h>
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// GLOBAL VARS //////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+int fd; //file descriptor of the file containing the filesystem
+superblock_type superblock; //the current superblock, stored in memory
+bool ready; //indicates whether the filesystem is ready for use
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// FUNCTION PROTOTYPES //////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void add_free_block(unsigned int block); //adds a free block to the filesystem
+void write_superblock(int blocknum);//writes superblock object newSuper to the specified block
 
 /*
-* TODO: initfs()
+* initfs()
 * Initializes the filesystem on file filename, with fsize total blocks and isize i-node blocks
 * Returns a file descriptor pointing to the new file, or -1 if the file could not be created
 */
 int initfs(const char* filename = "my_v6", int fsize = 10, int isize = 2) {
-    int fd = open(filename, O_RDWR | O_CREAT | O_TRUNC, 0600);
+    fprintf(stderr, "Initializing filesystem\n");
+    fd = open(filename, O_RDWR | O_CREAT | O_TRUNC, 0600);
     if (fd != -1) { //the file was created successfully    
         //initialize the superblock
-        superblock_type new_superblock;
-        new_superblock.fsize = fsize;
-        new_superblock.isize = isize;
-        //TODO: implement free-block chain; for now the maximum # of accessible blocks is 200
-        if (fsize - (isize + 1) < 200) {
-            new_superblock.nfree = fsize - (isize + 1);
-        }
-        else {
-            new_superblock.nfree = 200;
-        }
-        //populate the free[] array
-        int firstFreeBlock = isize + 1;
+        superblock.fsize = fsize;
+        superblock.isize = isize;
+        superblock.time = static_cast<unsigned int>(time(NULL));
 
-        for (int counter = firstFreeBlock; counter < new_superblock.nfree; counter++) {
-            new_superblock.free[counter] = counter + firstFreeBlock;
-        }
-
-        //CREATE THE FILESYSTEM
-        //create (fsize - 1) empty blocks
+        //create the underlying file: (fsize - 1) empty blocks
         char empty_block[1024] = { 0 };
         for (int counter = 0; counter < fsize; counter++) {
             write(fd, empty_block, BLOCK_SIZE);
         }
-        //write the superblock as the second block
-        lseek(fd, BLOCK_SIZE, SEEK_SET);
-        write(fd, &new_superblock, sizeof(superblock_type));
 
+        //populate the free[] array
+        superblock.free[1] = 0;
+        superblock.nfree = 2;
+        for (int counter = isize + 2; counter < fsize; counter++) {
+            add_free_block(counter);
+        }
+
+        //write the superblock as the second block
+        write_superblock(1);
     }
 
     //return the file descriptor of the file for use
     lseek(fd, 0, SEEK_SET);
+    ready = true;
     return fd;
 }
 
+/*
+* cpin()
+* create a new file called "fileName" in the v6 file system and fill 
+* the contents of the newly created file with the contents of the externalfile
+*/
+int cpin(const char* extfile, const char* fileName) {
+    
+}
+
+
+/*
+* cpout()
+* If the v6-file exists, create externalfile and make the externalfile's
+* contents equal to v6-file.
+*/
+int cpout(const char* fileName, const char* extFile) {
+    
+}
+
+
+
+/*
+* rm()
+* Remove the v6-file from the v6File system
+*/
+int rm(const char* fileName) {
+    
+}
+
+
+
+
+
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// INODE FUNCTIONS //////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 // Function to write inode, from Professor's jumpstart file
-void inode_writer(int fd, int inum, inode_type inode) {
+void inode_writer(int inum, inode_type inode) {
 
     lseek(fd, 2 * BLOCK_SIZE + (inum - 1) * INODE_SIZE, SEEK_SET);
     write(fd, &inode, sizeof(inode));
 }
 
 // Function to read inodes, from Profesor's jumpstart file
-inode_type inode_reader(int fd, int inum, inode_type inode) {
+inode_type inode_reader(int inum, inode_type inode) {
     lseek(fd, 2 * BLOCK_SIZE + (inum - 1) * INODE_SIZE, SEEK_SET);
     read(fd, &inode, sizeof(inode));
     return inode;
 }
 
-//  Function to get the contents of the superblock
-superblock_type get_superblock(int fd) {
-    superblock_type superblock;
-    lseek(fd, BLOCK_SIZE, SEEK_SET);    //superblock is always second block of filesystem
-    assert(fd != 0 && fd != 1 && fd != 2);
-    read(fd, &superblock, sizeof(superblock));
-    return superblock;
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// SUPERBLOCK FUNCTIONS /////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//  updates the superblock in memory with data from filesystem at block address blocknum
+void get_superblock(int blocknum) {
+    lseek(fd, blocknum * BLOCK_SIZE, SEEK_SET); 
+    read(fd, &superblock, sizeof(superblock_type));
 }
 
-void update_superblock(superblock_type newsuper) {
-    lseek(fd, BLOCK_SIZE, SEEK_SET);
-    assert(fd != 0 && fd != 1 && fd != 2);
-    write(fd, &newsuper, BLOCK_SIZE);
+//  Function to update filesystem from superblock in memory
+void update_superblock() {
+    write_superblock(1);
 }
 
 
+//  write_superblock(): copies superblock in memory to specified block
+void write_superblock(int blocknum) {
+    superblock.time = (unsigned int)time(NULL);
+    lseek(fd, blocknum * BLOCK_SIZE, SEEK_SET);
+    write(fd, &superblock, sizeof(superblock_type));
+}
 
+//  write_superblock(): copies passed superblock object to specified block
+void write_superblock(int blocknum, superblock_type block_to_write) {
+    block_to_write.time = (unsigned int)time(NULL);
+    lseek(fd, blocknum * BLOCK_SIZE, SEEK_SET);
+    write(fd, &block_to_write, sizeof(superblock_type));
+}
 
+//  outputs the contents of the superblock object in memory
+void print_superblock() {
+    fprintf(stdout, "Number of blocks: %d\n", superblock.fsize);
+    fprintf(stdout, "Number of i-node blocks: %d\n", superblock.isize);
+    fprintf(stdout, "Time last modified: %d\n", superblock.time);
+}
 
-
-//New main function for getting user input and storing file Name, number of data blocks and number of I-nodes
-
-int main() {
-    printf("\n You have Accessed the create File System... \n");
-    printf("To create a file system enter: EX. <initfs CDrive 400 20> \n");
-
-
-    // Sets a limit to user input length 
-    char userInput[100];
-
-    while (1) { // Will run the system until user enters "q"
-        
-        printf("Enter Command : ");
-        // get user input
-        scanf(" %[^\n]s", userInput);
-
-        // if user presses q, exits the system.
-        if (strcmp(userInput, "q") == 0) {
-            exit(0);
+//adds a block to the free list
+void add_free_block(unsigned int block) {
+    if (block < superblock.fsize && block >= superblock.isize + 2) {//check filesystem bounds
+        if (superblock.nfree == 200) { //current superblock is full; create a new superblock and copy old one to filesystem
+            fprintf(stderr, "Superblock capacity exceeded, creating new superblock\n");
+            write_superblock(block);
+            
+            superblock.free[0] = block;
+            superblock.nfree = 1;
         }
-
-        char *userCommand; // function to execute "Should be initfs"
-        userCommand = strtok(userInput, " ");  //Tokenizes the user string input. I.e. every word in the userInput turns into a seperate token
-
-        // if Command is Initfs intializes file system 
-        if (strcmp(userCommand, "initfs") == 0) {          //Checks if the first word is 'Initfs'
-            char *fileName = strtok(NULL, " ");            //Points to the 2nd word which should be the file Name
-            char *dataBlocks = strtok(NULL, " ");          //Points to the 3rd word which should be the the number of data blocks (stores the number as a character)
-            char *inodes = strtok(NULL, " ");              //Points to the 4th word which should be the number of inodes   (stores the number as a character)
-           
-           //Converts the characters of data block and Inodes into integers to store them as numbers
-            int numDataBlocks = atoi(dataBlocks);  
-            int numInodes = atoi(inodes);
-            
-          //Prints user input to screen to test if everything was captured correctly  
-          printf("File name entered: %s\n", fileName );
-          printf("Number of data blocks entered: %d\n", numDataBlocks);
-          printf("Number of I-node blocks entered: %d\n", numInodes);
-            
-            }
-      }
-} //End of main
-    
-
-/*
-int main()
-{ 
-    //initialize the filesystem
-    fprintf(stderr, "Initializing v6 filesystem...\n");
-    int fd = initfs();
-    //get the superblock
-    fprintf(stderr, "Fetching superblock...\n");
-    superblock_type superblock = get_superblock(fd);
-    fprintf(stderr, "Done\n");
-
-    // checks condition of whether or not the 
-    // user wants to continue to give commands
-    bool x = true;
-
-    while (x == true) {
-        char testCommand[25];
-        printf("What is your command? ");
-        scanf("%s", testCommand);
-        // if(testCommand[]) // test more commands
-        if (testCommand[0] == 'q') {
-            x = false;
-            printf("\rSystem Exited. Thank you.\r");
+        else {
+            superblock.free[superblock.nfree] = block;
+            superblock.nfree++;
+            update_superblock();
         }
     }
-    return 0;
+    else {  //the block is outside the bounds of the filesystem
+        fprintf(stderr, "Error: Block is out of bounds\n");
+    }
 }
 
+//gets the address of a free block from the filesystem referenced by fd
+int get_free_block(){
+    superblock.nfree--;
+    if (superblock.nfree != 0){  //current superblock is not empty
+        if (superblock.free[superblock.nfree] == 0){//  the filesystem is empty
+            fprintf(stderr, "Error: Filesystem empty, could not allocate block\n");
+            superblock.nfree++;
+            return -1;
+        } else {
+            update_superblock();
+            return superblock.free[superblock.nfree];
+        }
+    }
+    else {    //the current superblock is empty; fetch new superblock from filesystem
+        fprintf(stderr, "Current superblock is empty, fetching superblock from disk\n");
+        get_superblock(superblock.free[0]);
+        update_superblock();
+        return get_free_block();
+    }
+    //should never reach this state
+    fprintf(stderr, "Unknown error while allocating block");
+}
 
-*/
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// GENERAL SYSTEM FUNCTIONS//////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void add_free_block(int); // Method we need to modify
-void get_free_block(); // Method we need to modify
+void exit(){    //saves and closes the filesystem
+    if (ready){
+        update_superblock();
+        close(fd);
+        ready = false;
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// TEST MAIN() FUNCTION /////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+int main()
+{
+    ready = false;
+    bool running = true;
+    char input[64] = {" "};
+    char* token;
+
+    while (running){    //get user input
+        fprintf(stdout, "Enter a command:\n");
+        scanf(" %[^\n]s", input);
+        token = strtok(input, " ");
+
+        if (strcmp(token, "q") == 0){   //exit the program
+            fprintf(stdout, "Exiting v6 filesystem\n");
+            exit();
+            running = false;
+        } else if (strcmp(token, "initfs") == 0){ //initialize the filesystem
+            char* filename;
+            int fsize = 0, isize = 0;
+          
+            filename = strtok(NULL, " ");
+            fsize = atoi(strtok(NULL, " "));
+            isize = atoi(strtok(NULL, " "));
+            initfs(filename, fsize, isize);
+        }  
+        //creates a new file called v6-file in the v6 file system 
+        //and fill the contents of the newly created file with the 
+        //contents of the externalfile
+        else if(strcmp(token, "cpin") == 0){  
+            char* filename;
+            char* extFile;
+
+            extFile = strtok(NULL, " ");
+            filename = strtok(NULL, " ");
+            cpin(extFile, filename);
+        }
+        //if the v6-file exists, create externalfile and make 
+        //the externalfile's contents equal to v6-file
+        else if(strcmp(token, "cpout") == 0){ // 
+            char* filename;
+            char* extFile;
+
+            filename = strtok(NULL, " ");
+            extFile = strtok(NULL, " ");
+            cpout(filename, extFile);
+        }
+        //will delete the file v6_file from the v6 file system.
+        //Remove all the data blocks of the file, free the 
+        //i-node and remove the directory entry.
+        else if(strcmp(token, "rm") == 0){ // 
+            char* filename;
+            filename = strtok(NULL, " ");
+            rm(filename);
+        }
+        else {    //command was not recognized
+            fprintf(stdout, "Command not recognized, enter a new command\n");
+        }
+    }
+
+    return 0;
+}
