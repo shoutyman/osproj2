@@ -5,15 +5,18 @@
 *	filesystem structures including the superblock and i-nodes
 */
 
-const int BLOCK_SIZE = 1024;    //the number of bytes in a block
-const int INODE_SIZE = 64;
+
+unsigned int BLOCK_SIZE = 1024;    //the number of bytes in a block
+unsigned int INODE_SIZE = 64;
 
 //definition of superblock
 typedef struct {
     int isize;
     int fsize;
     int nfree;
-    unsigned int free[200];
+    unsigned short free[200];
+    unsigned int ninode;
+    unsigned short inode[200];
     char flock;
     char ilock;
     char fmod;
@@ -27,8 +30,8 @@ typedef struct inode {
     unsigned short nlinks;
     unsigned int uid;
     unsigned int gid;
-    unsigned int size0;
-    unsigned int size1;
+    unsigned int size0; //0;
+    unsigned int size1;  //2 * sizeof(dir_type);
     unsigned int addr[9];
     unsigned int actime;
     unsigned int modtime;
