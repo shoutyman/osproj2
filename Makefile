@@ -1,8 +1,8 @@
 mod-v6: mod-v6.cpp structures.h
-	g++ mod-v6.cpp -std=c++11 -o mod-v6
+	g++ -o mod-v6 mod-v6.cpp 
 	
 
 all: mod-v6
 
 clean:
-	rm -f mod-v6 my_v6
+	rm -f mod-v6 my-v6
