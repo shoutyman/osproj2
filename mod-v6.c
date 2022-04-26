@@ -23,7 +23,8 @@
 ///////////////////////////////
 inode_type inode_reader(int, inode_type);
 void inode_writer(int, inode_type);
-void addDirectoryEntry(inode_type inode, dir_type entry, int index);
+void setDirectoryEntry(inode_type inode, dir_type entry, int index);
+void addDirectoryEntry(inode_type inode, dir_type entry);
 
 ///////////////////////////////
 // GLOBAL VARS ////////////////
@@ -145,8 +146,8 @@ void createRootDirectory()
     root.actime = time(NULL);
     root.modtime = time(NULL);
 
-    addDirectoryEntry(root, first, 0);
-    addDirectoryEntry(root, second, 1);
+    setDirectoryEntry(root, first, 0);
+    setDirectoryEntry(root, second, 1);
 
     inode_writer(0, root);
     curINodeNumber = 0;
@@ -270,7 +271,7 @@ int cpin(const char *extfile, const char *fileName)
         strncpy(newEntry.filename, fileName, sizeof(newEntry.filename));
         //  put the file in root directory
         inode_type root = inode_reader(0, root);
-        addDirectoryEntry(root, newEntry, 2);
+        setDirectoryEntry(root, newEntry, 2);
 
         // write the inode
         int inode_address = getInode();
@@ -348,7 +349,7 @@ dir_type getDirectoryEntry(inode_type inode, int index)
 }
 
 // adds the entry to the directory at index index
-void addDirectoryEntry(inode_type inode, dir_type entry, int index)
+void setDirectoryEntry(inode_type inode, dir_type entry, int index)
 {
     if (inode.flags & DIRECTORY)
     {
@@ -365,7 +366,37 @@ void addDirectoryEntry(inode_type inode, dir_type entry, int index)
     }
     else
     {
-        throw std::invalid_argument("Error: argument to addDirectoryEntry() must be a directory.");
+        throw std::invalid_argument("Error: argument to setDirectoryEntry() must be a directory.");
+    }
+}
+
+//  adds the entry to the directory in the first open slot
+void addDirectoryEntry(inode_type inode, dir_type entry)
+{
+    const int dirCapacity = ((9 * BLOCK_SIZE) / sizeof(dir_type)); // the number of entries that can fit in a directory
+    if (inode.flags & DIRECTORY)
+    {
+        // find an open index
+        int dirIndex = 0;
+        dir_type currentEntry;
+        currentEntry.inode;
+        do
+        {
+            currentEntry = getDirectoryEntry(inode, dirIndex);
+            if (currentEntry.inode != 0)
+            {
+                dirIndex++;
+            }
+        } while (currentEntry.inode != 0 && dirIndex < dirCapacity);
+        // if the directory is not full, add the directory entry at position dirIndex
+        if (dirIndex < dirCapacity)
+        {
+            setDirectoryEntry(inode, entry, dirIndex);
+        }
+    }
+    else
+    {
+        throw std::invalid_argument("Error: argument to setDirectoryEntry() must be a directory.");
     }
 }
 
