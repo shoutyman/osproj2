@@ -49,11 +49,14 @@ void addFreeBlock(int blockNumber)
     if (superBlock.nfree == 200) // Free array is full
     {
         // write to the new block
-        writeToBlock(blockNumber, superBlock.free, 200 * 2);
+        writeToBlock(blockNumber, superBlock.free, 200 * sizeof(unsigned int));
         superBlock.nfree = 0; // Resets nfree to 0 to begin filling up new blocks
     }
-    superBlock.free[superBlock.nfree] = blockNumber;
-    superBlock.nfree++;
+    else
+    {
+        superBlock.free[superBlock.nfree] = blockNumber;
+        superBlock.nfree++;
+    }
 }
 
 // releases the specified inode
@@ -66,9 +69,14 @@ void addFreeInode(int iNodeNumber)
 
     // attempt to add the inode to the free list
     if (superBlock.ninode == 200)
+    {
         return;
-    superBlock.inode[superBlock.ninode] = iNodeNumber;
-    superBlock.ninode++;
+    }
+    else
+    {
+        superBlock.inode[superBlock.ninode] = iNodeNumber;
+        superBlock.ninode++;
+    }
 }
 
 // returns the inode address of an inode
@@ -77,7 +85,9 @@ int getInode()
     int nodeNum;
     if (superBlock.ninode > 0)
     { // there are inodes left in the free i-node array
+        superBlock.ninode--;
         nodeNum = superBlock.inode[superBlock.ninode];
+
     } /* else {
          //TODO: if the array is empty, repopulate with unallocated inodes from the i-blocks
      }*/
@@ -87,12 +97,11 @@ int getInode()
 int getFreeBlock()
 {
     if (superBlock.nfree == 0)
-    { // if the free list is full
+    { // if the free list is empty
         int blockNumber = superBlock.free[0];
-        lseek(fd, 1024 * blockNumber, SEEK_SET);
-        read(fd, superBlock.free, 200 * 2);
-        superBlock.nfree = 100; //???????????????
-        return blockNumber;
+        lseek(fd, BLOCK_SIZE * blockNumber, SEEK_SET);
+        read(fd, superBlock.free, 200 * sizeof(unsigned int));
+        superBlock.nfree = 200;
     }
     // subtracts a block from the free list and returns it
     superBlock.nfree--;
@@ -112,18 +121,15 @@ void createRootDirectory()
     int blockNumber = getFreeBlock();
 
     // intitializes directory entry with 2 spots
-    dir_type directory[2];
+    dir_type first, second;
 
     // The first spot in the directory gets inode = 0 with fileName "."
-    directory[0].inode = 0;
-    strcpy(directory[0].filename, ".");
+    first.inode = 0;
+    strncpy(first.filename, ".", 2);
 
     // The second spot in the directory gets inode = 0 aswell with fileName ".."
-    directory[1].inode = 0;
-    strcpy(directory[1].filename, "..");
-
-    // The i-node block gets populated with the values of . and ..
-    writeToBlock(blockNumber, directory, 2 * sizeof(directory));
+    second.inode = 0;
+    strncpy(second.filename, "..", 3);
 
     // Creates object of the inode type
     inode_type root;
@@ -139,6 +145,9 @@ void createRootDirectory()
     root.actime = time(NULL);
     root.modtime = time(NULL);
 
+    addDirectoryEntry(root, first, 0);
+    addDirectoryEntry(root, second, 1);
+
     inode_writer(0, root);
     curINodeNumber = 0;
     strcpy(pwd, "/");
@@ -151,7 +160,7 @@ void createRootDirectory()
  */
 int initfs(const char *filename, int totalDataBlks, int totaliNodeBlks)
 {
-
+    const int inodesPerBlock = BLOCK_SIZE / sizeof(inode_type);
     fprintf(stderr, "Initializing filesystem\n");
 
     fd = open(filename, O_RDWR | O_CREAT | O_TRUNC, 0600);
@@ -185,7 +194,7 @@ int initfs(const char *filename, int totalDataBlks, int totaliNodeBlks)
     // add free Inodes to inode array
     superBlock.ninode = 0; // ninode is the # of free i-nodes in the i-node array
     // iNodeNumber starts at 1 becuase iNodeNumber 0 is for the root directory
-    for (int iNodeNumber = 1; iNodeNumber < totaliNodeBlks; iNodeNumber++)
+    for (int iNodeNumber = 1; iNodeNumber <= totaliNodeBlks * inodesPerBlock; iNodeNumber++)
         addFreeInode(iNodeNumber);
 
     //(4)   //Sets these flags for the superBlock
@@ -221,73 +230,54 @@ int initfs(const char *filename, int totalDataBlks, int totaliNodeBlks)
  */
 int cpin(const char *extfile, const char *fileName)
 {
-    //  open the external file and get filesize
-    std::ifstream file(extfile, std::ios::binary | std::ios::ate);
-    int fileLength = file.tellg();
-    file.seekg(0, std::ios::beg);
-
-    // get an inode for the file, set flags field
-    int nodeNum = getInode();
-    inode_type newNode = inode_reader(nodeNum, newNode);
-    newNode.size1 = fileLength;
-    if (fileLength < BLOCK_SIZE * 9)
+    int fd2;
+    if ((fd2 = open(extfile, O_RDWR | O_CREAT, 0600)) == -1)
     {
-        newNode.flags += SMALL;
-    }
-    // TODO: implement medium, long, super long files
-    /*
-    else if (fileLength < BLOCK_SIZE * BLOCK_SIZE * 9)
-    {
-        newNode.flags += MEDIUM;
-    }
-    else if (fileLength < BLOCK_SIZE * BLOCK_SIZE * BLOCK_SIZE * 9)
-    {
-        newNode.flags += LONG;
-    }
-    else if (fileLength < BLOCK_SIZE * BLOCK_SIZE * BLOCK_SIZE * BLOCK_SIZE * 9)
-    {
-        newNode.flags += SUPERLONG;
-    }*/
-    else
-    {
-        std::cerr << "Error: File too large\n";
-        addFreeInode(nodeNum);
-        file.close();
+        printf("\n File did not open correctly");
         return -1;
     }
-    newNode.flags += ALLOCATED;
-
-    // calculate and allocate space for the file
-    int numblocks = (fileLength / BLOCK_SIZE) + 1;
-
-    for (int index = 0; index < numblocks; index++)
+    else
     {
-        newNode.addr[index] = getFreeBlock();
+        inode_type newNode;
+        newNode.flags = 0;
+        newNode.nlinks = 0;
+        newNode.uid = 0;
+        newNode.gid = 0;
+        newNode.size0 = 0;
+        newNode.size1 = 0;
+        newNode.actime = time(NULL);
+        newNode.modtime = time(NULL);
+        for (int counter = 0; counter < 9; counter++)
+        {
+            newNode.addr[counter] = 0;
+        }
+
+        // split the file contents into blocks and write to the system
+        char buffer[BLOCK_SIZE];
+        int addrIndex = 0, bytesRead = BLOCK_SIZE;
+        while (bytesRead == BLOCK_SIZE && addrIndex < 9)
+        {
+            bytesRead = read(fd2, buffer, BLOCK_SIZE);
+            newNode.addr[addrIndex] = getFreeBlock();
+            lseek(fd, newNode.addr[addrIndex], SEEK_SET);
+            write(fd, buffer, BLOCK_SIZE);
+            addrIndex++;
+        }
+
+        //  create a directory entry
+        dir_type newEntry;
+        newEntry.inode = getInode();
+        strncpy(newEntry.filename, fileName, sizeof(newEntry.filename));
+        //  put the file in root directory
+        inode_type root = inode_reader(0, root);
+        addDirectoryEntry(root, newEntry, 2);
+
+        // write the inode
+        int inode_address = getInode();
+        inode_writer(inode_address, newNode);
+
+        return inode_address;
     }
-
-    // split the file contents into blocks and write to the system
-    char buffer[BLOCK_SIZE];
-    int addrIndex = 0;
-    while (!file.eofbit)
-    {
-        file.read(buffer, BLOCK_SIZE);
-        writeToBlock(newNode.addr[addrIndex], buffer, BLOCK_SIZE);
-        addrIndex++;
-    }
-
-    //  create a directory entry
-    dir_type newEntry;
-    newEntry.inode = nodeNum;
-    strncpy(newEntry.filename, fileName, sizeof(newEntry.filename));
-    //  put the file in root directory
-    inode_type root = inode_reader(0, root);
-    addDirectoryEntry(root, newEntry, 3);
-
-    // write the inode
-    int inode_address = getInode();
-    inode_writer(inode_address, newNode);
-
-    return inode_address;
 }
 
 /* TODO
@@ -316,14 +306,14 @@ int rm(const char *fileName)
 // Function to write inode, from Professor's jumpstart file
 void inode_writer(int inum, inode_type inode)
 {
-    lseek(fd, 2 * 1024 + (inum - 1) * 64, SEEK_SET);
+    lseek(fd, 2 * 1024 + (inum)*64, SEEK_SET);
     write(fd, &inode, sizeof(inode));
 }
 
 // Function to read inodes, from Profesor's jumpstart file
 inode_type inode_reader(int inum, inode_type inode)
 {
-    lseek(fd, 2 * 1024 + (inum - 1) * 64, SEEK_SET);
+    lseek(fd, 2 * 1024 + (inum)*64, SEEK_SET);
     read(fd, &inode, sizeof(inode));
     return inode;
 }
@@ -339,13 +329,11 @@ dir_type getDirectoryEntry(inode_type inode, int index)
     {
         //  translate from logical entry number to physical address
         const int dirCapacity = BLOCK_SIZE / sizeof(dir_type);
-        //  TODO: search other blocks of root directory
         int blocknum = inode.addr[0];
-        int offset = index * sizeof(dir_type);
 
         // read the directory entry
         dir_type entry;
-        lseek(fd, BLOCK_SIZE * blocknum + offset, SEEK_SET);
+        lseek(fd, BLOCK_SIZE * blocknum + index * sizeof(dir_type), SEEK_SET);
         read(fd, &entry, sizeof(dir_type));
 
         return entry;
@@ -367,11 +355,10 @@ void addDirectoryEntry(inode_type inode, dir_type entry, int index)
         // convert index to logical inode address
         const int dirCapacity = BLOCK_SIZE / sizeof(dir_type);
         int blocknum = index / dirCapacity;
-        int offset = index % dirCapacity;
         // convert logical inode block to physical address
         blocknum = inode.addr[blocknum];
         // write the directory entry
-        lseek(fd, BLOCK_SIZE * blocknum + offset, SEEK_SET);
+        lseek(fd, BLOCK_SIZE * blocknum + (index * sizeof(dir_type)), SEEK_SET);
         write(fd, &entry, sizeof(dir_type));
 
         return;
@@ -468,8 +455,7 @@ int main()
 /////////////////////////////////////////////////////////////////////////////////
 int main()
 {
-    std::cout << "Size of directory entry: " << sizeof(dir_type) << "\n";
-    int fsystem = initfs("my-v6", 100, 10);
+    int fsystem = initfs("my-v6", 50, 10);
     // verifying root directory integrity
     inode_type rootdir = inode_reader(0, rootdir);
     std::cout << "root flags: " << rootdir.flags << "\n";
@@ -479,6 +465,15 @@ int main()
     //  get contents of root directory
     std::cout << "Files in root directory:\n";
     dir_type entry;
+    for (int counter = 0; counter < BLOCK_SIZE / sizeof(dir_type); counter++)
+    {
+        entry = getDirectoryEntry(rootdir, counter);
+        std::cout << "Entry " << counter << ": " << entry.inode << " " << entry.filename << "\n";
+    }
+    std::cout << "copying garbage to filesystem\n";
+    cpin("garbage.txt", "garbage");
+    //  get contents of root directory
+    std::cout << "Files in root directory:\n";
     for (int counter = 0; counter < BLOCK_SIZE / sizeof(dir_type); counter++)
     {
         entry = getDirectoryEntry(rootdir, counter);
