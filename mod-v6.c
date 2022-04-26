@@ -3,14 +3,15 @@
 
 #include <stdio.h>
 #include <stdbool.h>
-#include <unistd.h> //includes system calls for reading/writing files
-#include <fcntl.h>  //includes constants useful for manipulating files
-#include <assert.h> //TESTING: allows use of assert() macro
-#include <time.h>   //used to create and update timestamps
-#include <cstring>  //contains functions for string comparison, to parse user inputs
-#include <stdlib.h> //contains the atoi() function to get information from the user
-#include <iostream> //for debugging and user interactivity
-#include <fstream>
+#include <unistd.h>  //includes system calls for reading/writing files
+#include <fcntl.h>   //includes constants useful for manipulating files
+#include <assert.h>  //TESTING: allows use of assert() macro
+#include <time.h>    //used to create and update timestamps
+#include <cstring>   //contains functions for string comparison, to parse user inputs
+#include <stdlib.h>  //contains the atoi() function to get information from the user
+#include <iostream>  //for debugging and user interactivity
+#include <fstream>   //for file manipulation
+#include <stdexcept> //for throwing and handling exceptions
 
 #include "./structures.h" //contains the definitions for superblock, i-node, directory, etc.
 #include <unistd.h>       // required for read command
@@ -22,6 +23,7 @@
 ///////////////////////////////
 inode_type inode_reader(int, inode_type);
 void inode_writer(int, inode_type);
+void addDirectoryEntry(inode_type inode, dir_type entry, int index);
 
 ///////////////////////////////
 // GLOBAL VARS ////////////////
@@ -39,7 +41,7 @@ bool ready; // indicates whether the filesystem is ready for use
 void writeToBlock(int blockNumber, void *buffer, int nbytes)
 {
     lseek(fd, (BLOCK_SIZE * blockNumber), SEEK_SET); // Gets us to the block we want
-    write(fd, buffer, nbytes);                       // Writes in the selected block from above with whats
+    write(fd, &buffer, nbytes);                      // Writes in the selected block from above with whats
 }
 
 void addFreeBlock(int blockNumber)
@@ -100,20 +102,14 @@ int getFreeBlock()
 void writeToBlockOffset(int blockNumber, int offset, void *buffer, int nbytes)
 {
     lseek(fd, (1024 * blockNumber) + offset, SEEK_SET);
-    write(fd, buffer, nbytes);
+    write(fd, &buffer, nbytes);
 }
 
-void writeInode(int INumber, inode_type inode)
-{
-    int blockNumber = (INODE_SIZE * INumber) / 1024;
-    int offset = (64 * INumber) % 1024;
-    writeToBlockOffset(blockNumber, offset, &inode, sizeof(inode_type));
-}
-
+//  creates the root directory
 void createRootDirectory()
 {
 
-    int blockNumber = getFreeBlock(); // change to 2?
+    int blockNumber = getFreeBlock();
 
     // intitializes directory entry with 2 spots
     dir_type directory[2];
@@ -132,7 +128,7 @@ void createRootDirectory()
     // Creates object of the inode type
     inode_type root;
 
-    // sets 14th and 15th bit to 1
+    // set flags
     root.flags = ALLOCATED + DIRECTORY;
     root.nlinks = 1;
     root.uid = 0;
@@ -143,7 +139,7 @@ void createRootDirectory()
     root.actime = time(NULL);
     root.modtime = time(NULL);
 
-    writeInode(0, root);
+    inode_writer(0, root);
     curINodeNumber = 0;
     strcpy(pwd, "/");
 }
@@ -216,10 +212,12 @@ int initfs(const char *filename, int totalDataBlks, int totaliNodeBlks)
 
 // End of Leo Code
 
-/* TODO
+/*
  * cpin()
  * create a new file called "fileName" in the v6 file system and fill
  * the contents of the newly created file with the contents of the externalfile
+ *
+ * returns inode address of the new file
  */
 int cpin(const char *extfile, const char *fileName)
 {
@@ -231,6 +229,7 @@ int cpin(const char *extfile, const char *fileName)
     // get an inode for the file, set flags field
     int nodeNum = getInode();
     inode_type newNode = inode_reader(nodeNum, newNode);
+    newNode.size1 = fileLength;
     if (fileLength < BLOCK_SIZE * 9)
     {
         newNode.flags += SMALL;
@@ -272,11 +271,23 @@ int cpin(const char *extfile, const char *fileName)
     while (!file.eofbit)
     {
         file.read(buffer, BLOCK_SIZE);
-        writeToBlock(addrIndex, buffer, BLOCK_SIZE);
+        writeToBlock(newNode.addr[addrIndex], buffer, BLOCK_SIZE);
         addrIndex++;
     }
 
-    return 0;
+    //  create a directory entry
+    dir_type newEntry;
+    newEntry.inode = nodeNum;
+    strncpy(newEntry.filename, fileName, sizeof(newEntry.filename));
+    //  put the file in root directory
+    inode_type root = inode_reader(0, root);
+    addDirectoryEntry(root, newEntry, 3);
+
+    // write the inode
+    int inode_address = getInode();
+    inode_writer(inode_address, newNode);
+
+    return inode_address;
 }
 
 /* TODO
@@ -305,7 +316,6 @@ int rm(const char *fileName)
 // Function to write inode, from Professor's jumpstart file
 void inode_writer(int inum, inode_type inode)
 {
-
     lseek(fd, 2 * 1024 + (inum - 1) * 64, SEEK_SET);
     write(fd, &inode, sizeof(inode));
 }
@@ -316,6 +326,60 @@ inode_type inode_reader(int inum, inode_type inode)
     lseek(fd, 2 * 1024 + (inum - 1) * 64, SEEK_SET);
     read(fd, &inode, sizeof(inode));
     return inode;
+}
+/////////////////////////
+// DIRECTORY FUNCTIONS //
+/////////////////////////
+
+// returns the directory entry at the given index
+dir_type getDirectoryEntry(inode_type inode, int index)
+{
+    // ensure the inode is a directory
+    if (inode.flags & DIRECTORY)
+    {
+        //  translate from logical entry number to physical address
+        const int dirCapacity = BLOCK_SIZE / sizeof(dir_type);
+        //  TODO: search other blocks of root directory
+        int blocknum = inode.addr[0];
+        int offset = index * sizeof(dir_type);
+
+        // read the directory entry
+        dir_type entry;
+        lseek(fd, BLOCK_SIZE * blocknum + offset, SEEK_SET);
+        read(fd, &entry, sizeof(dir_type));
+
+        return entry;
+    }
+    else
+    {
+        throw std::invalid_argument("Error: argument to getDirectoryEntry() must be a directory.");
+    }
+    dir_type error;
+    error.inode = -1;
+    return error;
+}
+
+// adds the entry to the directory at index index
+void addDirectoryEntry(inode_type inode, dir_type entry, int index)
+{
+    if (inode.flags & DIRECTORY)
+    {
+        // convert index to logical inode address
+        const int dirCapacity = BLOCK_SIZE / sizeof(dir_type);
+        int blocknum = index / dirCapacity;
+        int offset = index % dirCapacity;
+        // convert logical inode block to physical address
+        blocknum = inode.addr[blocknum];
+        // write the directory entry
+        lseek(fd, BLOCK_SIZE * blocknum + offset, SEEK_SET);
+        write(fd, &entry, sizeof(dir_type));
+
+        return;
+    }
+    else
+    {
+        throw std::invalid_argument("Error: argument to addDirectoryEntry() must be a directory.");
+    }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -335,6 +399,7 @@ void exit()
 // TESTING USER INPUT /////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+/*
 int main()
 {
     ready = false;
@@ -395,4 +460,26 @@ int main()
     }
 
     return 0;
+}
+*/
+
+/////////////////////////////////////////////////////////////////////////////////
+// SYSTEM TESTING MAIN FUNCTION /////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////
+int main()
+{
+    std::cout << "Size of directory entry: " << sizeof(dir_type) << "\n";
+    int fsystem = initfs("my-v6", 100, 10);
+    // verifying root directory integrity
+    inode_type rootdir = inode_reader(0, rootdir);
+    std::cout << "root flags: " << rootdir.flags << "\n";
+    std::cout << "address of root directory: " << rootdir.addr[0] << "\n";
+    //  get contents of root directory
+    std::cout << "Files in root directory:\n";
+    dir_type entry;
+    for (int counter = 0; counter < BLOCK_SIZE / sizeof(dir_type); counter++)
+    {
+        entry = getDirectoryEntry(rootdir, counter);
+        std::cout << "Entry " << counter << ": " << entry.inode << " " << entry.filename << "\n";
+    }
 }

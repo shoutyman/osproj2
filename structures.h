@@ -31,8 +31,8 @@ typedef struct inode
     unsigned short nlinks;
     unsigned int uid;
     unsigned int gid;
-    unsigned int size0; // 0;
-    unsigned int size1; // 2 * sizeof(dir_type);
+    unsigned int size0;
+    unsigned int size1;
     unsigned int addr[9];
     unsigned int actime;
     unsigned int modtime;
