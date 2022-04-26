@@ -1,4 +1,4 @@
-mod-v6: mod-v6.cpp structures.h
+mod-v6: clean mod-v6.cpp structures.h
 	g++ -o mod-v6 mod-v6.cpp 
 	
 
