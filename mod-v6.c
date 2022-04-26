@@ -9,6 +9,7 @@
 #include <time.h>   //used to create and update timestamps
 #include <cstring>  //contains functions for string comparison, to parse user inputs
 #include <stdlib.h> //contains the atoi() function to get information from the user
+#include <fstream>
 
 #include "./structures.h" //contains the definitions for superblock, i-node, directory, etc.
 #include <unistd.h> // required for read command
@@ -213,6 +214,12 @@ int initfs(const char* filename , int totalDataBlks , int totaliNodeBlks ) {
 * the contents of the newly created file with the contents of the externalfile
 */
 int cpin(const char* extfile, const char* fileName) {
+    //open file
+    std::ifstream infile(extfile);
+
+    //readfile
+    //if()
+
     
 }
 
