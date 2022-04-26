@@ -18,7 +18,7 @@
 ///////////////////////////////
 // GLOBAL VARS //////////////////////////////////////////////////////////////////////////////////////////////////////
 
-char fileSystemPath[100];
+//char fileSystemPath[100];
 char pwd[100];
 int curINodeNumber;
 int fd; //file descriptor of the file containing the filesystem
@@ -48,7 +48,7 @@ void addFreeBlock(int blockNumber){
         superBlock.nfree++;
 }
 
-
+//loads i-node array with 200 free spaces where ninode is the amount of free i-nodes available
 void addFreeInode(int iNodeNumber){
         if(superBlock.ninode == 200)
                 return;
@@ -70,6 +70,8 @@ int getFreeBlock(){
         return superBlock.free[superBlock.nfree];
 }
 
+     writeToBlockOffset(blockNumber,currentINode.size0,&createdFile,sizeof(dir_type));
+
 void writeToBlockOffset(int blockNumber, int offset, void * buffer, int nbytes)
 {
         lseek(fd,(1024 * blockNumber) + offset, SEEK_SET);
@@ -84,6 +86,30 @@ void writeInode(int INumber, inode_type inode){
 }
 
 
+// returns the inode address of an inode   //Alex Code
+int getFreeInode()
+{
+    int iNodeNum;
+    if (superBlock.ninode > 0)
+    { // there are inodes left in the free i-node array
+        iNodeNum = superBlock.inode[superBlock.ninode];
+        superBlock.ninode--;
+    } /* else {
+         //TODO: if the array is empty, repopulate with unallocated inodes from the i-blocks
+         
+     }*/
+    return iNodeNum;
+}
+
+
+inode_type getInodeBlock(int iNodeNumber){
+        inode_type iNode;
+        int blockNumber = (iNodeNumber * 64) / 1024;    
+        int offset = (iNodeNumber * 64) % 1024;
+        lseek(fd,(1024 * blockNumber) + offset, SEEK_SET);
+        read(fd, &iNode, 64);
+        return iNode;
+}
 
 
 void createRootDirectory(){
@@ -123,7 +149,7 @@ void createRootDirectory(){
 
         writeInode(0,root);
         curINodeNumber = 0;
-        strcpy(pwd,"/");
+        strcpy(pwd,"/");   //??????????????????????????
 }
 
 //////////////End of leo code
@@ -149,17 +175,17 @@ int initfs(const char* filename , int totalDataBlks , int totaliNodeBlks ) {
                 return 0;
         }
         
-    strcpy(fileSystemPath,filename);
+   
     
         //(1)     
-        //initiate fsize
+        //init fsize
         superBlock.fsize = totalDataBlks; 
         char empty_Block[1024] = { 0 };
-        //initiate isize (Number of blocks for inodes)
-        if(((totaliNodeBlks*64) % 1024) == 0) 
-                superBlock.isize = (totaliNodeBlks*64)/1024;       //An whole number of iblocks 
+        //init isize (Number of blocks for inodes)
+        if(((totaliNodeBlks*64)%1024) == 0) 
+                superBlock.isize = (totaliNodeBlks*64)/1024;
         else
-                superBlock.isize = (totaliNodeBlks*64)/1024+1;     //A decimal number iblock
+                superBlock.isize = (totaliNodeBlks*64)/1024+1;
   
         //(2)
         // writing empty block to last Datablock
@@ -209,12 +235,72 @@ int initfs(const char* filename , int totalDataBlks , int totaliNodeBlks ) {
 
 /*
 * cpin()
-* create a new file called "fileName" in the v6 file system and fill 
+* create a new file called "v6-file" in the v6 file system and fill 
 * the contents of the newly created file with the contents of the externalfile
 */
-int cpin(const char* extfile, const char* fileName) {
+int cpin(const char* extFile, const char* fileName) {
     
-}
+        int fd2,blockNumber;
+        if((fd2 = open(extFile,O_RDWR|O_CREAT,0600))== -1)
+        {
+                fprintf(stdout, "Failure to open File");
+                return 0;
+        }
+        
+        int iNodeNum = getFreeInode();  //Gets the inumber of a free i-node block
+        
+        //initialized newFile as an i-node type and setting its structure
+        inode_type newFile;
+        
+        newFile.flags = 1<<15; // when 15th bit is = 1 it means its allocated
+        newFile.nlinks = 1;
+        newFile.uid = 0;
+        newFile.gid = 0;
+        newFile.size0 = 0;
+        newFile.size1 = 2 * sizeof(dir_type);;
+        newFile.actime = time(NULL);
+        newFile.modtime = time(NULL);
+        
+        // Read external file  and copy to datablock; block by block
+        int bytesToRead = 1024;
+        char readBuffer[1024] = {0};
+        
+        int i = 0;
+        while(bytesToRead == 1024){   //means theres still a block of data to be read
+                
+                bytesToRead = read(fd2,readBuffer,1024);  //reading in external file and saving to buffer
+                newFile.size0 += bytesToRead; \
+                blockNumber = getFreeBlock(); //Fetches a datablock to store contents
+                newFile.addr[i++] = blockNumber; //Stores what datablock we are pointing to
+                writeToBlock(blockNumber, readBuffer, bytesToRead);  //Writes contents of external file to the datablock
+        }
+        
+        //Begin process of writing to the i-node block using the iNumber we got earlier from getFreeInode() 
+        //and filling it up with the structure of the "newFile" inode object we created above
+        writeInode(iNodeNum,newFile);
+        
+        //sets currentINode = to the I-node block the filesystem is currently on
+        inode_type currentINode = getInodeBlock(curINodeNumber);  //curINodeNumber is global var to track what i-node the system is on
+        
+        //stores the number of the datablock in which we wrote all our data to above inside the address array of our current i-node 
+        blockNumber = currentINode.addr[0];
+        
+        //Begin process of Loading the file we created into the directory 
+        dir_type createdFile;
+        
+        //###REMEMBER### Directory has 2 entries per file. The pointer to the i-node and the file name
+        
+        //Creates the pointer to the inode that has the discription of our newly created file
+        createdFile.inode = iNodeNum;
+        //Takes the name of the newley created file and stores it in the directory 
+        strcpy(createdFile.filename,fileName);
+        
+        writeToBlockOffset(blockNumber,currentINode.size0,&createdFile,sizeof(dir_type));
+        currentINode.size0 += sizeof(dir_type); //for the offset
+        writeInode(curINodeNumber,currentINode);
+        
+}//End of cpin
+
 
 
 /*
