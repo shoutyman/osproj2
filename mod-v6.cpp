@@ -23,6 +23,9 @@
 ///////////////////////////////
 inode_type inode_reader(int, inode_type);
 void inode_writer(int, inode_type);
+
+void removeDirectoryEntry(inode_type inode, int index);
+dir_type getDirectoryEntry(inode_type inode, int index);
 void addDirectoryEntry(inode_type inode, dir_type entry, int index);
 
 ///////////////////////////////
@@ -296,6 +299,21 @@ int cpout(const char *fileName, const char *extFile)
  */
 int rm(const char *fileName)
 {
+    inode_type rootdir = inode_reader(0, rootdir);
+    dir_type entry;
+    for (int counter = 0; counter < BLOCK_SIZE / sizeof(dir_type); counter++)
+    {
+        entry = getDirectoryEntry(rootdir, counter);
+        if(strcmp(fileName, entry.filename) == 0) {
+            inode_type file = inode_reader(entry.inode, file);
+            for(int i = 0; i < file.size0; i+=BLOCK_SIZE) {
+                addFreeBlock(file.addr[i/BLOCK_SIZE]);
+            }
+            addFreeInode(entry.inode);
+            dir_type empty_entry;
+            removeDirectoryEntry(rootdir, counter);
+        }
+    }
     return 0;
 }
 
@@ -367,6 +385,16 @@ void addDirectoryEntry(inode_type inode, dir_type entry, int index)
     {
         throw std::invalid_argument("Error: argument to addDirectoryEntry() must be a directory.");
     }
+}
+
+void removeDirectoryEntry(inode_type inode, int index) {
+    const int dirCapacity = BLOCK_SIZE / sizeof(dir_type);
+    int blocknum = index / dirCapacity;
+    // convert logical inode block to physical address
+    blocknum = inode.addr[blocknum];
+
+    lseek(fd, BLOCK_SIZE * blocknum + (index * sizeof(dir_type)), SEEK_SET);
+    write(fd, (char[sizeof(dir_type)]){ }, sizeof(dir_type));
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -472,6 +500,15 @@ int main()
     }
     std::cout << "copying garbage to filesystem\n";
     cpin("garbage.txt", "garbage");
+    //  get contents of root directory
+    std::cout << "Files in root directory:\n";
+    for (int counter = 0; counter < BLOCK_SIZE / sizeof(dir_type); counter++)
+    {
+        entry = getDirectoryEntry(rootdir, counter);
+        std::cout << "Entry " << counter << ": " << entry.inode << " " << entry.filename << "\n";
+    }
+    std::cout << "removing garbage file\n";
+    rm("garbage");
     //  get contents of root directory
     std::cout << "Files in root directory:\n";
     for (int counter = 0; counter < BLOCK_SIZE / sizeof(dir_type); counter++)
