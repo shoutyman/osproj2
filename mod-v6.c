@@ -271,7 +271,7 @@ int cpin(const char *extfile, const char *fileName)
         strncpy(newEntry.filename, fileName, sizeof(newEntry.filename));
         //  put the file in root directory
         inode_type root = inode_reader(0, root);
-        setDirectoryEntry(root, newEntry, 2);
+        addDirectoryEntry(root, newEntry);
 
         // write the inode
         int inode_address = getInode();
@@ -377,7 +377,7 @@ void addDirectoryEntry(inode_type inode, dir_type entry)
     if (inode.flags & DIRECTORY)
     {
         // find an open index
-        int dirIndex = 0;
+        int dirIndex = 2;
         dir_type currentEntry;
         currentEntry.inode;
         do
@@ -500,6 +500,7 @@ int main()
         std::cout << "Entry " << counter << ": " << entry.inode << " " << entry.filename << "\n";
     }
     std::cout << "copying garbage to filesystem\n";
+    cpin("garbage.txt", "garbage");
     cpin("garbage.txt", "garbage");
     //  get contents of root directory
     std::cout << "Files in root directory:\n";
