@@ -1,69 +1,303 @@
-//Project 2 for CS 4348.005 Operating Systems Concepts Spring 2022
-//Authors: Alex Wan, Isabelle Villegas, Leonel Perez
+// Project 2 for CS 4348.005 Operating Systems Concepts Spring 2022
+// Authors: Alex Wan, Isabelle Villegas, Leonel Perez
 
-#include <stdio.h>    
+#include <stdio.h>
 #include <stdbool.h>
-#include <unistd.h> //includes system calls for reading/writing files
-#include <fcntl.h>  //includes constants useful for manipulating files 
-#include <assert.h> //TESTING: allows use of assert() macro
-#include <time.h>   //used to create and update timestamps
-#include <cstring>  //contains functions for string comparison, to parse user inputs
-#include <stdlib.h> //contains the atoi() function to get information from the user
+#include <unistd.h>  //includes system calls for reading/writing files
+#include <fcntl.h>   //includes constants useful for manipulating files
+#include <assert.h>  //TESTING: allows use of assert() macro
+#include <time.h>    //used to create and update timestamps
+#include <cstring>   //contains functions for string comparison, to parse user inputs
+#include <stdlib.h>  //contains the atoi() function to get information from the user
+#include <iostream>  //for debugging and user interactivity
+#include <fstream>   //for file manipulation
+#include <stdexcept> //for throwing and handling exceptions
 
 #include "./structures.h" //contains the definitions for superblock, i-node, directory, etc.
-#include <unistd.h> // required for read command
-#include <sys/types.h> // required for lseek 
+#include <unistd.h>       // required for read command
+#include <sys/types.h>    // required for lseek
 #include <fcntl.h>
 
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// GLOBAL VARS //////////////////////////////////////////////////////////////////////////////////////////////////////
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-int fd; //file descriptor of the file containing the filesystem
-superblock_type superblock; //the current superblock, stored in memory
-bool ready; //indicates whether the filesystem is ready for use
+///////////////////////////////
+/// FUNCTION PROTOTYPES/////////
+///////////////////////////////
+inode_type inode_reader(int, inode_type);
+void inode_writer(int, inode_type);
+void setDirectoryEntry(inode_type inode, dir_type entry, int index);
+void addDirectoryEntry(inode_type inode, dir_type entry);
 
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// FUNCTION PROTOTYPES //////////////////////////////////////////////////////////////////////////////////////////////
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////
+// GLOBAL VARS ////////////////
+///////////////////////////////
 
-void add_free_block(unsigned int block); //adds a free block to the filesystem
-void write_superblock(int blocknum);//writes superblock object newSuper to the specified block
+char fileSystemPath[100];
+char pwd[100];
+int curINodeNumber;
+int fd;                     // file descriptor of the file containing the filesystem
+superblock_type superBlock; // the current superblock, stored in memory
+dir_type directory;
+bool ready; // indicates whether the filesystem is ready for use
+
+////////////Leo CODE
+void writeToBlock(int blockNumber, void *buffer, int nbytes)
+{
+    lseek(fd, (BLOCK_SIZE * blockNumber), SEEK_SET); // Gets us to the block we want
+    write(fd, &buffer, nbytes);                      // Writes in the selected block from above with whats
+}
+
+void addFreeBlock(int blockNumber)
+{
+    if (superBlock.nfree == 200) // Free array is full
+    {
+        // write to the new block
+        writeToBlock(blockNumber, superBlock.free, 200 * sizeof(unsigned int));
+        superBlock.nfree = 0; // Resets nfree to 0 to begin filling up new blocks
+    }
+    else
+    {
+        superBlock.free[superBlock.nfree] = blockNumber;
+        superBlock.nfree++;
+    }
+}
+
+// releases the specified inode
+void addFreeInode(int iNodeNumber)
+{
+    // ensure the inode is marked unallocated
+    inode_type inode = inode_reader(iNodeNumber, inode);
+    if (inode.flags & ALLOCATED)
+        inode.flags -= ALLOCATED;
+
+    // attempt to add the inode to the free list
+    if (superBlock.ninode == 200)
+    {
+        return;
+    }
+    else
+    {
+        superBlock.inode[superBlock.ninode] = iNodeNumber;
+        superBlock.ninode++;
+    }
+}
+
+// returns the inode address of an inode
+int getInode()
+{
+    int nodeNum;
+    if (superBlock.ninode > 0)
+    { // there are inodes left in the free i-node array
+        superBlock.ninode--;
+        nodeNum = superBlock.inode[superBlock.ninode];
+
+    } /* else {
+         //TODO: if the array is empty, repopulate with unallocated inodes from the i-blocks
+     }*/
+    return nodeNum;
+}
+
+int getFreeBlock()
+{
+    if (superBlock.nfree == 0)
+    { // if the free list is empty
+        int blockNumber = superBlock.free[0];
+        lseek(fd, BLOCK_SIZE * blockNumber, SEEK_SET);
+        read(fd, superBlock.free, 200 * sizeof(unsigned int));
+        superBlock.nfree = 200;
+    }
+    // subtracts a block from the free list and returns it
+    superBlock.nfree--;
+    return superBlock.free[superBlock.nfree];
+}
+
+void writeToBlockOffset(int blockNumber, int offset, void *buffer, int nbytes)
+{
+    lseek(fd, (1024 * blockNumber) + offset, SEEK_SET);
+    write(fd, &buffer, nbytes);
+}
+
+//  creates the root directory
+void createRootDirectory()
+{
+
+    int blockNumber = getFreeBlock();
+
+    // intitializes directory entry with 2 spots
+    dir_type first, second;
+
+    // The first spot in the directory gets inode = 0 with fileName "."
+    first.inode = 0;
+    strncpy(first.filename, ".", 2);
+
+    // The second spot in the directory gets inode = 0 aswell with fileName ".."
+    second.inode = 0;
+    strncpy(second.filename, "..", 3);
+
+    // Creates object of the inode type
+    inode_type root;
+
+    // set flags
+    root.flags = ALLOCATED + DIRECTORY;
+    root.nlinks = 1;
+    root.uid = 0;
+    root.gid = 0;
+    root.size0 = 0;
+    root.size1 = 2 * sizeof(dir_type);
+    root.addr[0] = blockNumber;
+    root.actime = time(NULL);
+    root.modtime = time(NULL);
+
+    setDirectoryEntry(root, first, 0);
+    setDirectoryEntry(root, second, 1);
+
+    inode_writer(0, root);
+    curINodeNumber = 0;
+    strcpy(pwd, "/");
+}
 
 /*
-* initfs()
-* Initializes the filesystem on file filename, with fsize total blocks and isize i-node blocks
-* Returns a file descriptor pointing to the new file, or -1 if the file could not be created
-*/
-int initfs(const char* filename = "my_v6", int fsize = 10, int isize = 2) {
+ * initfs()
+ * Initializes the filesystem on file filename, with fsize total blocks and isize i-node blocks
+ * Returns a file descriptor pointing to the new file, or -1 if the file could not be created
+ */
+int initfs(const char *filename, int totalDataBlks, int totaliNodeBlks)
+{
+    const int inodesPerBlock = BLOCK_SIZE / sizeof(inode_type);
     fprintf(stderr, "Initializing filesystem\n");
+
     fd = open(filename, O_RDWR | O_CREAT | O_TRUNC, 0600);
-    if (fd != -1) { //the file was created successfully    
-        //initialize the superblock
-        superblock.fsize = fsize;
-        superblock.isize = isize;
-        superblock.time = static_cast<unsigned int>(time(NULL));
-
-        //create the underlying file: (fsize - 1) empty blocks
-        char empty_block[1024] = { 0 };
-        for (int counter = 0; counter < fsize; counter++) {
-            write(fd, empty_block, BLOCK_SIZE);
-        }
-
-        //populate the free[] array
-        superblock.free[1] = 0;
-        superblock.nfree = 2;
-        for (int counter = isize + 2; counter < fsize; counter++) {
-            add_free_block(counter);
-        }
-
-        //write the superblock as the second block
-        write_superblock(1);
+    if ((fd = open(filename, O_RDWR | O_CREAT, 0600)) == -1)
+    {
+        fprintf(stdout, "Failure to open File");
+        return 0;
     }
 
-    //return the file descriptor of the file for use
-    lseek(fd, 0, SEEK_SET);
-    ready = true;
+    strcpy(fileSystemPath, filename);
+
+    //(1)
+    // initiate fsize
+    superBlock.fsize = totalDataBlks;
+    char empty_Block[1024] = {0};
+    // initiate isize (Number of blocks for inodes)
+    superBlock.isize = (totaliNodeBlks * 64) / 1024;
+
+    //(2)
+    // writing empty block to last Datablock
+    writeToBlock(totalDataBlks - 1, empty_Block, 1024);
+    // Add all blocks to the free array
+    superBlock.nfree = 0;
+    // Initializes the regular datablocks to the blocks after the last i-node and then adds them to them to the free list
+    for (int dataBlockNumber = superBlock.isize + 1; dataBlockNumber < totalDataBlks; dataBlockNumber++)
+    {
+        addFreeBlock(dataBlockNumber);
+    }
+
+    //(3)
+    // add free Inodes to inode array
+    superBlock.ninode = 0; // ninode is the # of free i-nodes in the i-node array
+    // iNodeNumber starts at 1 becuase iNodeNumber 0 is for the root directory
+    for (int iNodeNumber = 1; iNodeNumber <= totaliNodeBlks * inodesPerBlock; iNodeNumber++)
+        addFreeInode(iNodeNumber);
+
+    //(4)   //Sets these flags for the superBlock
+    superBlock.flock = 'f';
+    superBlock.ilock = 'i';
+    superBlock.fmod = 'f';
+
+    //(5)
+    // write Super Block to block 1
+    // becuase superBlock starts at block 1 and boot block at block 0
+    writeToBlock(1, &superBlock, 1024); //??????????????
+
+    //(6)
+    // create empty i-node blocks
+    // i-nodes start at block 2
+    for (int i = 2; i <= superBlock.isize; i++)
+        writeToBlock(i, empty_Block, 1024);
+
+    //(7)
+    createRootDirectory();
+
     return fd;
+}
+
+// End of Leo Code
+
+/*
+ * cpin()
+ * create a new file called "fileName" in the v6 file system and fill
+ * the contents of the newly created file with the contents of the externalfile
+ *
+ * returns inode address of the new file
+ */
+int cpin(const char *extfile, const char *fileName)
+{
+    int fd2;
+    if ((fd2 = open(extfile, O_RDWR | O_CREAT, 0600)) == -1)
+    {
+        printf("\n File did not open correctly");
+        return -1;
+    }
+    else
+    {
+        inode_type newNode;
+        newNode.flags = 0;
+        newNode.nlinks = 0;
+        newNode.uid = 0;
+        newNode.gid = 0;
+        newNode.size0 = 0;
+        newNode.size1 = 0;
+        newNode.actime = time(NULL);
+        newNode.modtime = time(NULL);
+        for (int counter = 0; counter < 9; counter++)
+        {
+            newNode.addr[counter] = 0;
+        }
+
+        // split the file contents into blocks and write to the system
+        char buffer[BLOCK_SIZE];
+        int addrIndex = 0, bytesRead = BLOCK_SIZE;
+        while (bytesRead == BLOCK_SIZE && addrIndex < 9)
+        {
+            bytesRead = read(fd2, buffer, BLOCK_SIZE);
+            newNode.addr[addrIndex] = getFreeBlock();
+            lseek(fd, newNode.addr[addrIndex], SEEK_SET);
+            write(fd, buffer, BLOCK_SIZE);
+            addrIndex++;
+        }
+
+        //  create a directory entry
+        dir_type newEntry;
+        newEntry.inode = getInode();
+        strncpy(newEntry.filename, fileName, sizeof(newEntry.filename));
+        //  put the file in root directory
+        inode_type root = inode_reader(0, root);
+        addDirectoryEntry(root, newEntry);
+
+        // write the inode
+        int inode_address = getInode();
+        inode_writer(inode_address, newNode);
+
+        return inode_address;
+    }
+}
+
+/* TODO
+ * cpout()
+ * If the v6-file exists, create externalfile and make the externalfile's
+ * contents equal to v6-file.
+ */
+int cpout(const char *fileName, const char *extFile)
+{
+    return 0;
+}
+
+/* TODO
+ * rm()
+ * Remove the v6-file from the v6File system
+ */
+int rm(const char *fileName)
+{
+    return 0;
 }
 
 /*
@@ -80,116 +314,119 @@ int cpin(const char* extfile, const char* fileName) {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // Function to write inode, from Professor's jumpstart file
-void inode_writer(int inum, inode_type inode) {
-
-    lseek(fd, 2 * BLOCK_SIZE + (inum - 1) * INODE_SIZE, SEEK_SET);
+void inode_writer(int inum, inode_type inode)
+{
+    lseek(fd, 2 * 1024 + (inum)*64, SEEK_SET);
     write(fd, &inode, sizeof(inode));
 }
 
 // Function to read inodes, from Profesor's jumpstart file
-inode_type inode_reader(int inum, inode_type inode) {
-    lseek(fd, 2 * BLOCK_SIZE + (inum - 1) * INODE_SIZE, SEEK_SET);
+inode_type inode_reader(int inum, inode_type inode)
+{
+    lseek(fd, 2 * 1024 + (inum)*64, SEEK_SET);
     read(fd, &inode, sizeof(inode));
     return inode;
 }
+/////////////////////////
+// DIRECTORY FUNCTIONS //
+/////////////////////////
 
+// returns the directory entry at the given index
+dir_type getDirectoryEntry(inode_type inode, int index)
+{
+    // ensure the inode is a directory
+    if (inode.flags & DIRECTORY)
+    {
+        //  translate from logical entry number to physical address
+        const int dirCapacity = BLOCK_SIZE / sizeof(dir_type);
+        int blocknum = inode.addr[0];
 
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// SUPERBLOCK FUNCTIONS /////////////////////////////////////////////////////////////////////////////////////////////
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-//  updates the superblock in memory with data from filesystem at block address blocknum
-void get_superblock(int blocknum) {
-    lseek(fd, blocknum * BLOCK_SIZE, SEEK_SET); 
-    read(fd, &superblock, sizeof(superblock_type));
+        // read the directory entry
+        dir_type entry;
+        lseek(fd, BLOCK_SIZE * blocknum + index * sizeof(dir_type), SEEK_SET);
+        read(fd, &entry, sizeof(dir_type));
+
+        return entry;
+    }
+    else
+    {
+        throw std::invalid_argument("Error: argument to getDirectoryEntry() must be a directory.");
+    }
+    dir_type error;
+    error.inode = -1;
+    return error;
 }
 
-//  Function to update filesystem from superblock in memory
-void update_superblock() {
-    write_superblock(1);
+// adds the entry to the directory at index index
+void setDirectoryEntry(inode_type inode, dir_type entry, int index)
+{
+    if (inode.flags & DIRECTORY)
+    {
+        // convert index to logical inode address
+        const int dirCapacity = BLOCK_SIZE / sizeof(dir_type);
+        int blocknum = index / dirCapacity;
+        // convert logical inode block to physical address
+        blocknum = inode.addr[blocknum];
+        // write the directory entry
+        lseek(fd, BLOCK_SIZE * blocknum + (index * sizeof(dir_type)), SEEK_SET);
+        write(fd, &entry, sizeof(dir_type));
+
+        return;
+    }
+    else
+    {
+        throw std::invalid_argument("Error: argument to setDirectoryEntry() must be a directory.");
+    }
 }
 
-
-//  write_superblock(): copies superblock in memory to specified block
-void write_superblock(int blocknum) {
-    superblock.time = (unsigned int)time(NULL);
-    lseek(fd, blocknum * BLOCK_SIZE, SEEK_SET);
-    write(fd, &superblock, sizeof(superblock_type));
-}
-
-//  write_superblock(): copies passed superblock object to specified block
-void write_superblock(int blocknum, superblock_type block_to_write) {
-    block_to_write.time = (unsigned int)time(NULL);
-    lseek(fd, blocknum * BLOCK_SIZE, SEEK_SET);
-    write(fd, &block_to_write, sizeof(superblock_type));
-}
-
-//  outputs the contents of the superblock object in memory
-void print_superblock() {
-    fprintf(stdout, "Number of blocks: %d\n", superblock.fsize);
-    fprintf(stdout, "Number of i-node blocks: %d\n", superblock.isize);
-    fprintf(stdout, "Time last modified: %d\n", superblock.time);
-}
-
-//adds a block to the free list
-void add_free_block(unsigned int block) {
-    if (block < superblock.fsize && block >= superblock.isize + 2) {//check filesystem bounds
-        if (superblock.nfree == 200) { //current superblock is full; create a new superblock and copy old one to filesystem
-            fprintf(stderr, "Superblock capacity exceeded, creating new superblock\n");
-            write_superblock(block);
-            
-            superblock.free[0] = block;
-            superblock.nfree = 1;
+//  adds the entry to the directory in the first open slot
+void addDirectoryEntry(inode_type inode, dir_type entry)
+{
+    const int dirCapacity = ((9 * BLOCK_SIZE) / sizeof(dir_type)); // the number of entries that can fit in a directory
+    if (inode.flags & DIRECTORY)
+    {
+        // find an open index
+        int dirIndex = 2;
+        dir_type currentEntry;
+        currentEntry.inode;
+        do
+        {
+            currentEntry = getDirectoryEntry(inode, dirIndex);
+            if (currentEntry.inode != 0)
+            {
+                dirIndex++;
+            }
+        } while (currentEntry.inode != 0 && dirIndex < dirCapacity);
+        // if the directory is not full, add the directory entry at position dirIndex
+        if (dirIndex < dirCapacity)
+        {
+            setDirectoryEntry(inode, entry, dirIndex);
         }
-        else {
-            superblock.free[superblock.nfree] = block;
-            superblock.nfree++;
-            update_superblock();
-        }
     }
-    else {  //the block is outside the bounds of the filesystem
-        fprintf(stderr, "Error: Block is out of bounds\n");
+    else
+    {
+        throw std::invalid_argument("Error: argument to setDirectoryEntry() must be a directory.");
     }
-}
-
-//gets the address of a free block from the filesystem referenced by fd
-int get_free_block(){
-    superblock.nfree--;
-    if (superblock.nfree != 0){  //current superblock is not empty
-        if (superblock.free[superblock.nfree] == 0){//  the filesystem is empty
-            fprintf(stderr, "Error: Filesystem empty, could not allocate block\n");
-            superblock.nfree++;
-            return -1;
-        } else {
-            update_superblock();
-            return superblock.free[superblock.nfree];
-        }
-    }
-    else {    //the current superblock is empty; fetch new superblock from filesystem
-        fprintf(stderr, "Current superblock is empty, fetching superblock from disk\n");
-        get_superblock(superblock.free[0]);
-        update_superblock();
-        return get_free_block();
-    }
-    //should never reach this state
-    fprintf(stderr, "Unknown error while allocating block");
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // GENERAL SYSTEM FUNCTIONS//////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void exit(){    //saves and closes the filesystem
-    if (ready){
-        update_superblock();
+void exit()
+{ // saves and closes the filesystem
+    if (ready)
+    {
         close(fd);
         ready = false;
     }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// TEST MAIN() FUNCTION /////////////////////////////////////////////////////////////////////////////////////////////
+// TESTING USER INPUT /////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+/*
 int main()
 {
     ready = false;
@@ -209,37 +446,38 @@ int main()
         } else if (strcmp(token, "initfs") == 0){ //initialize the filesystem
             char* filename;
             int fsize = 0, isize = 0;
-          
+
             filename = strtok(NULL, " ");
             fsize = atoi(strtok(NULL, " "));
             isize = atoi(strtok(NULL, " "));
             initfs(filename, fsize, isize);
-        }  
-        //creates a new file called v6-file in the v6 file system 
-        //and fill the contents of the newly created file with the 
+        }
+        //creates a new file called v6-file in the v6 file system
+        //and fill the contents of the newly created file with the
         //contents of the externalfile
-        else if(strcmp(token, "cpin") == 0){  
+        else if(strcmp(token, "cpin") == 0){
             char* filename;
-            char* extfile;
+            char* extFile;
 
-            extfile = strtok(NULL, " ");
+            extFile = strtok(NULL, " ");
             filename = strtok(NULL, " ");
             cpin(extFile, filename);
         }
-        //if the v6-file exists, create externalfile and make 
+        //if the v6-file exists, create externalfile and make
         //the externalfile's contents equal to v6-file
-        else if(strcmp(token, "cpout") == 0){ // 
+        else if(strcmp(token, "cpout") == 0){ //
             char* filename;
-            char* extfile;
+            char* extFile;
 
             filename = strtok(NULL, " ");
             extFile = strtok(NULL, " ");
             cpout(filename, extFile);
         }
         //will delete the file v6_file from the v6 file system.
-        //Remove all the data blocks of the file, free the 
+
+        //Remove all the data blocks of the file, free the
         //i-node and remove the directory entry.
-        else if(strcmp(token, "rm") == 0){ // 
+        else if(strcmp(token, "rm") == 0){ //
             char* filename;
             filename = strtok(NULL, " ");
             rm(filename);
@@ -250,4 +488,35 @@ int main()
     }
 
     return 0;
+}
+*/
+
+/////////////////////////////////////////////////////////////////////////////////
+// SYSTEM TESTING MAIN FUNCTION /////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////
+int main()
+{
+    int fsystem = initfs("my-v6", 50, 10);
+    // verifying root directory integrity
+    inode_type rootdir = inode_reader(0, rootdir);
+    std::cout << "root flags: " << rootdir.flags << "\n";
+    std::cout << "address of root directory: " << rootdir.addr[0] << "\n";
+    //  get contents of root directory
+    std::cout << "Files in root directory:\n";
+    dir_type entry;
+    for (int counter = 0; counter < BLOCK_SIZE / sizeof(dir_type); counter++)
+    {
+        entry = getDirectoryEntry(rootdir, counter);
+        std::cout << "Entry " << counter << ": " << entry.inode << " " << entry.filename << "\n";
+    }
+    std::cout << "copying garbage to filesystem\n";
+    cpin("garbage.txt", "garbage");
+    cpin("garbage.txt", "garbage");
+    //  get contents of root directory
+    std::cout << "Files in root directory:\n";
+    for (int counter = 0; counter < BLOCK_SIZE / sizeof(dir_type); counter++)
+    {
+        entry = getDirectoryEntry(rootdir, counter);
+        std::cout << "Entry " << counter << ": " << entry.inode << " " << entry.filename << "\n";
+    }
 }
