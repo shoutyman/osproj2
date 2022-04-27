@@ -97,6 +97,17 @@ int getInode()
     return nodeNum;
 }
 
+inode_type getInodeBlock(int INumber){
+          
+        
+        inode_type iNode;
+        int blockNumber = (INumber * INODE_SIZE) / BLOCK_SIZE;    
+        int offset = (INumber * INODE_SIZE) % BLOCK_SIZE;
+        lseek(fd,(BLOCK_SIZE * blockNumber) + offset, SEEK_SET);
+        read(fd,&iNode,INODE_SIZE);
+        return iNode;
+}
+
 int getFreeBlock()
 {
     if (superBlock.nfree == 0)
@@ -222,8 +233,6 @@ int initfs(const char *filename, int totalDataBlks, int totaliNodeBlks)
     return fd;
 }
 
-// End of Leo Code
-
 /*
  * cpin()
  * create a new file called "fileName" in the v6 file system and fill
@@ -288,7 +297,7 @@ int cpin(const char *extfile, const char *fileName)
  * If the v6-file exists, create externalfile and make the externalfile's
  * contents equal to v6-file.
  */
-int cpout(const char *fileName, const char *extFile)
+int cpout(const char *destinationPath, const char *filename)
 {
     return 0;
 }
