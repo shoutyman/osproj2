@@ -300,6 +300,15 @@ int rm(const char *fileName)
     return 0;
 }
 
+/*
+* cpin()
+* create a new file called "fileName" in the v6 file system and fill 
+* the contents of the newly created file with the contents of the externalfile
+*/
+int cpin(const char* extfile, const char* fileName) {
+    
+}
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // INODE FUNCTIONS //////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -465,6 +474,7 @@ int main()
             cpout(filename, extFile);
         }
         //will delete the file v6_file from the v6 file system.
+
         //Remove all the data blocks of the file, free the
         //i-node and remove the directory entry.
         else if(strcmp(token, "rm") == 0){ //
