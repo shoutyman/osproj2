@@ -316,7 +316,7 @@ int cpout(const char *destinationPath, const char *filename)
     if (index != dirCapacity)
     { // file was found, copy
         inode_type targetfile = inode_reader(0, targetfile);
-        lseek(fd, targetfile.addr[0], SEEK_SET);
+        lseek(fd, BLOCK_SIZE * (targetfile.addr[0] - 1), SEEK_SET);
         read(fd, buffer, targetfile.size1);
         std::ofstream output;
         output.open(destinationPath);
@@ -358,7 +358,8 @@ int rm(const char *fileName)
         for (int counter = 0; counter < BLOCK_SIZE / sizeof(dir_type); counter++)
         {
         entry = getDirectoryEntry(rootdir, counter);
-        std::cout << "Entry " << counter << ": " << entry.inode << " " << entry.filename << "\n";
+        if(strlen(entry.filename) > 0)
+            std::cout << "Entry " << counter << ": " << entry.inode << " " << entry.filename << "\n";
         }
         
         }
@@ -504,8 +505,9 @@ int main()
         dir_type entry;
         for (int counter = 0; counter < BLOCK_SIZE / sizeof(dir_type); counter++)
         {
-        entry = getDirectoryEntry(rootdir, counter);
-        std::cout << "Entry " << counter << ": " << entry.inode << " " << entry.filename << "\n";
+            entry = getDirectoryEntry(rootdir, counter);
+            if(strlen(entry.filename) > 0)
+                std::cout << "Entry " << counter << ": " << entry.inode << " " << entry.filename << "\n";
         }
         
         }//END of Initfs
@@ -528,6 +530,7 @@ int main()
         for (int counter = 0; counter < BLOCK_SIZE / sizeof(dir_type); counter++)
         {
         entry = getDirectoryEntry(rootdir, counter);
+        if(strlen(entry.filename) > 0)
         std::cout << "Entry " << counter << ": " << entry.inode << " " << entry.filename << "\n";
         }
         
