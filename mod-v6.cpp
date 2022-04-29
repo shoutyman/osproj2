@@ -326,15 +326,6 @@ int rm(const char *fileName)
     return 0;
 }
 
-/*
-* cpin()
-* create a new file called "fileName" in the v6 file system and fill 
-* the contents of the newly created file with the contents of the externalfile
-*/
-int cpin(const char* extfile, const char* fileName) {
-    
-}
-
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // INODE FUNCTIONS //////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -462,7 +453,7 @@ void exit()
 // TESTING USER INPUT /////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/*
+
 int main()
 {
     ready = false;
@@ -523,46 +514,4 @@ int main()
     }
 
     return 0;
-}
-*/
-
-/////////////////////////////////////////////////////////////////////////////////
-// SYSTEM TESTING MAIN FUNCTION /////////////////////////////////////////////////
-/////////////////////////////////////////////////////////////////////////////////
-int main()
-{
-    int fsystem = initfs("my-v6", 50, 10);
-    // verifying root directory integrity
-    inode_type rootdir = inode_reader(0, rootdir);
-    std::cout << "root flags: " << rootdir.flags << "\n";
-    std::cout << "address of root directory: " << rootdir.addr[0] << "\n";
-    // add file to root directory
-    cpin("test.txt", "test");
-    //  get contents of root directory
-    std::cout << "Files in root directory:\n";
-    dir_type entry;
-    for (int counter = 0; counter < BLOCK_SIZE / sizeof(dir_type); counter++)
-    {
-        entry = getDirectoryEntry(rootdir, counter);
-        std::cout << "Entry " << counter << ": " << entry.inode << " " << entry.filename << "\n";
-    }
-    std::cout << "copying garbage to filesystem\n";
-    cpin("garbage.txt", "garbage");
-    cpin("garbage.txt", "garbage");
-    //  get contents of root directory
-    std::cout << "Files in root directory:\n";
-    for (int counter = 0; counter < BLOCK_SIZE / sizeof(dir_type); counter++)
-    {
-        entry = getDirectoryEntry(rootdir, counter);
-        std::cout << "Entry " << counter << ": " << entry.inode << " " << entry.filename << "\n";
-    }
-    std::cout << "removing garbage file\n";
-    rm("garbage");
-    //  get contents of root directory
-    std::cout << "Files in root directory:\n";
-    for (int counter = 0; counter < BLOCK_SIZE / sizeof(dir_type); counter++)
-    {
-        entry = getDirectoryEntry(rootdir, counter);
-        std::cout << "Entry " << counter << ": " << entry.inode << " " << entry.filename << "\n";
-    }
 }
