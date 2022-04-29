@@ -5,8 +5,8 @@
  *	filesystem structures including the superblock and i-nodes
  */
 
-unsigned int BLOCK_SIZE = 1024; // the number of bytes in a block
-unsigned int INODE_SIZE = 64;
+const unsigned int BLOCK_SIZE = 1024; // the number of bytes in a block
+const unsigned int INODE_SIZE = 64;
 
 // definition of superblock
 typedef struct
