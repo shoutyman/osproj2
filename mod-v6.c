@@ -12,7 +12,9 @@
 #include <iostream>  //for debugging and user interactivity
 #include <fstream>   //for file manipulation
 #include <stdexcept> //for throwing and handling exceptions
+
 #include "./structures.h" //contains the definitions for superblock, i-node, directory, etc.
+#include <unistd.h>       // required for read command
 #include <sys/types.h>    // required for lseek
 #include <fcntl.h>
 
@@ -36,11 +38,11 @@ superblock_type superBlock; // the current superblock, stored in memory
 dir_type directory;
 bool ready; // indicates whether the filesystem is ready for use
 
-////////////Leo CODE
-void writeToBlock(int blockNumber, void *buffer, int nbytes)
+
+void writeToBlock(int blockNumber, void *buffer, int numbytes)
 {
     lseek(fd, (BLOCK_SIZE * blockNumber), SEEK_SET); // Gets us to the block we want
-    write(fd, &buffer, nbytes);                      // Writes in the selected block from above with whats
+    write(fd, buffer, numbytes);                      // Writes in the selected block from above with whats
 }
 
 void addFreeBlock(int blockNumber)
@@ -78,7 +80,7 @@ void addFreeInode(int iNodeNumber)
     }
 }
 
-// returns the inode address of an inode
+// returns an inode number 
 int getInode()
 {
     int nodeNum;
@@ -104,20 +106,9 @@ int getFreeBlock()
     }
     // subtracts a block from the free list and returns it
     superBlock.nfree--;
-    return superBlock.free[superBlock.nfree];
+    return superBlock.free[superBlock.nfree];  //Starts allocating datablock 200 first
 }
 
-void writeToBlockOffset(int blockNumber, int offset, void *buffer, int nbytes)
-{
-    lseek(fd, (1024 * blockNumber) + offset, SEEK_SET);
-    write(fd, &buffer, nbytes);
-}
-
-void readFromBlockOffset(int blockNumber, int offset, void *buffer, int nbytes)
-{
-    lseek(fd, (BLOCK_SIZE * blockNumber) + offset, SEEK_SET);
-    read(fd, buffer, nbytes);
-}
 
 
 
@@ -248,7 +239,9 @@ int cpin(const char *extfile, const char *fileName)
     }
     else
     {
+        int inodeNumber = getInode();
         inode_type newNode;
+        
         newNode.flags = 0;
         newNode.nlinks = 0;
         newNode.uid = 0;
@@ -259,26 +252,30 @@ int cpin(const char *extfile, const char *fileName)
         newNode.modtime = time(NULL);
         for (int counter = 0; counter < 9; counter++)
         {
-            newNode.addr[counter] = 0;
+            newNode.addr[counter] = 0;  //sets all inode addr[] spots to 0 
         }
 
         // split the file contents into blocks and write to the system
         char buffer[BLOCK_SIZE];
-        int addrIndex = 0, bytesRead = BLOCK_SIZE, totalbytes = 0;
+        int addrIndex = 0,bytesRead = BLOCK_SIZE,totalbytes = 0,dataBlockNum = 0;
         while (bytesRead == BLOCK_SIZE && addrIndex < 9)
         {
             bytesRead = read(fd2, buffer, BLOCK_SIZE);
             totalbytes += bytesRead;
-            newNode.addr[addrIndex] = getFreeBlock();
-            lseek(fd, newNode.addr[addrIndex], SEEK_SET);
+            dataBlockNum = getFreeBlock();
+            newNode.addr[addrIndex] = dataBlockNum;
+            
+            writeToBlock(dataBlockNum, buffer, bytesRead);
+           /* lseek(fd, newNode.addr[addrIndex], SEEK_SET);
             write(fd, buffer, BLOCK_SIZE);
-            addrIndex++;
+            */
+            addrIndex++;  //increments i-nodes addr array
         }
-        newNode.size1 = totalbytes;
+        newNode.size1 = totalbytes; //The size of the file this inode points to
 
         //  create a directory entry
         dir_type newEntry;
-        newEntry.inode = getInode();
+        newEntry.inode = inodeNumber;
         strncpy(newEntry.filename, fileName, sizeof(newEntry.filename));
        
         //  put the file in root directory 
@@ -287,10 +284,9 @@ int cpin(const char *extfile, const char *fileName)
         entryCntr++;
 
         // write the inode
-        int inode_address = getInode();
-        inode_writer(inode_address, newNode);
+        inode_writer(inodeNumber, newNode);
 
-        return inode_address;
+        return inodeNumber;
         
         
         
@@ -518,8 +514,8 @@ int main()
             cpin(extFile, filename);
             
        
-        inode_type rootdir = inode_reader(0, rootdir);
         // Displays contents of root directory
+        inode_type rootdir = inode_reader(0, rootdir);
         std::cout << "\nFiles in root directory:\n";
         dir_type entry;
         for (int counter = 0; counter < BLOCK_SIZE / sizeof(dir_type); counter++)
