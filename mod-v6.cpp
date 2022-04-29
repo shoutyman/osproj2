@@ -97,17 +97,6 @@ int getInode()
     return nodeNum;
 }
 
-inode_type getInodeBlock(int INumber){
-          
-        
-        inode_type iNode;
-        int blockNumber = (INumber * INODE_SIZE) / BLOCK_SIZE;    
-        int offset = (INumber * INODE_SIZE) % BLOCK_SIZE;
-        lseek(fd,(BLOCK_SIZE * blockNumber) + offset, SEEK_SET);
-        read(fd,&iNode,INODE_SIZE);
-        return iNode;
-}
-
 int getFreeBlock()
 {
     if (superBlock.nfree == 0)
@@ -266,15 +255,17 @@ int cpin(const char *extfile, const char *fileName)
 
         // split the file contents into blocks and write to the system
         char buffer[BLOCK_SIZE];
-        int addrIndex = 0, bytesRead = BLOCK_SIZE;
+        int addrIndex = 0, bytesRead = BLOCK_SIZE, totalbytes = 0;
         while (bytesRead == BLOCK_SIZE && addrIndex < 9)
         {
             bytesRead = read(fd2, buffer, BLOCK_SIZE);
+            totalbytes += bytesRead;
             newNode.addr[addrIndex] = getFreeBlock();
             lseek(fd, newNode.addr[addrIndex], SEEK_SET);
             write(fd, buffer, BLOCK_SIZE);
             addrIndex++;
         }
+        newNode.size1 = totalbytes;
 
         //  create a directory entry
         dir_type newEntry;
@@ -289,23 +280,54 @@ int cpin(const char *extfile, const char *fileName)
         inode_writer(inode_address, newNode);
 
         return inode_address;
+        
+        
+        
+    }
+    // should never reach here
+    return -1;
+}
+
+
+
+
+int cpout(const char *destinationPath, const char *filename)
+{
+    const int dirCapacity = BLOCK_SIZE / sizeof(dir_type);
+    char buffer[1024] = {0};
+
+    //  fetch the root directory and search for the filename
+    inode_type rootdir = inode_reader(0, rootdir);
+
+    int index = 0;
+    dir_type entry;
+    do
+    {
+        entry = getDirectoryEntry(rootdir, index);
+
+        if (!(strcmp(filename, entry.filename) == 0))
+        {
+            index++;
+        }
+    } while (index < dirCapacity && strcmp(filename, entry.filename) == 0);
+
+    if (index != dirCapacity)
+    { // file was found, copy
+        inode_type targetfile = inode_reader(0, targetfile);
+        lseek(fd, targetfile.addr[0], SEEK_SET);
+        read(fd, buffer, targetfile.size1);
+        std::ofstream output;
+        output.open(destinationPath);
+        output << buffer;
+        output.close();
+        return targetfile.size1;
+    }
+    else
+    { // capacity was reached, file not found
+        return 0;
     }
 }
 
-/* TODO
- * cpout()
- * If the v6-file exists, create externalfile and make the externalfile's
- * contents equal to v6-file.
- */
-int cpout(const char *destinationPath, const char *filename)
-{
-    return 0;
-}
-
-/* TODO
- * rm()
- * Remove the v6-file from the v6File system
- */
 int rm(const char *fileName)
 {
     inode_type rootdir = inode_reader(0, rootdir);
@@ -313,10 +335,12 @@ int rm(const char *fileName)
     for (int counter = 0; counter < BLOCK_SIZE / sizeof(dir_type); counter++)
     {
         entry = getDirectoryEntry(rootdir, counter);
-        if(strcmp(fileName, entry.filename) == 0) {
+        if (strcmp(fileName, entry.filename) == 0)
+        {
             inode_type file = inode_reader(entry.inode, file);
-            for(int i = 0; i < file.size0; i+=BLOCK_SIZE) {
-                addFreeBlock(file.addr[i/BLOCK_SIZE]);
+            for (int i = 0; i < file.size0; i += BLOCK_SIZE)
+            {
+                addFreeBlock(file.addr[i / BLOCK_SIZE]);
             }
             addFreeInode(entry.inode);
             dir_type empty_entry;
@@ -431,9 +455,9 @@ void removeDirectoryEntry(inode_type inode, int index) {
     int blocknum = index / dirCapacity;
     // convert logical inode block to physical address
     blocknum = inode.addr[blocknum];
-
+    char writeArr[sizeof(dir_type)];
     lseek(fd, BLOCK_SIZE * blocknum + (index * sizeof(dir_type)), SEEK_SET);
-    write(fd, (char[sizeof(dir_type)]){ }, sizeof(dir_type));
+    write(fd, writeArr, sizeof(dir_type));
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -453,7 +477,6 @@ void exit()
 // TESTING USER INPUT /////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-
 int main()
 {
     ready = false;
@@ -466,49 +489,82 @@ int main()
         scanf(" %[^\n]s", input);
         token = strtok(input, " ");
 
-        if (strcmp(token, "q") == 0){   //exit the program
+        if (strcmp(token, "q") == 0)
+        { // exit the program
             fprintf(stdout, "Exiting v6 filesystem\n");
             exit();
             running = false;
-        } else if (strcmp(token, "initfs") == 0){ //initialize the filesystem
-            char* filename;
+        }
+        else if (strcmp(token, "initfs") == 0)
+        { // initialize the filesystem
+            char *filename;
             int fsize = 0, isize = 0;
 
             filename = strtok(NULL, " ");
             fsize = atoi(strtok(NULL, " "));
             isize = atoi(strtok(NULL, " "));
             initfs(filename, fsize, isize);
+            
+             inode_type rootdir = inode_reader(0, rootdir);
+        
+        // Displays contents of root directory
+        std::cout << "Files in root directory:\n";
+        dir_type entry;
+        for (int counter = 0; counter < BLOCK_SIZE / sizeof(dir_type); counter++)
+        {
+        entry = getDirectoryEntry(rootdir, counter);
+        std::cout << "Entry " << counter << ": " << entry.inode << " " << entry.filename << "\n";
         }
-        //creates a new file called v6-file in the v6 file system
-        //and fill the contents of the newly created file with the
-        //contents of the externalfile
-        else if(strcmp(token, "cpin") == 0){
-            char* filename;
-            char* extFile;
+        
+        }//END of Initfs
+        
+        // creates a new file called v6-file in the v6 file system
+        // and fill the contents of the newly created file with the
+        // contents of the externalfile
+        else if (strcmp(token, "cpin") == 0)
+        {
+            char *filename;
+            char *extFile;
 
             extFile = strtok(NULL, " ");
             filename = strtok(NULL, " ");
             cpin(extFile, filename);
+            
+       
+        inode_type rootdir = inode_reader(0, rootdir);
+        // Displays contents of root directory
+        std::cout << "\nFiles in root directory:\n";
+        dir_type entry;
+        for (int counter = 0; counter < BLOCK_SIZE / sizeof(dir_type); counter++)
+        {
+        entry = getDirectoryEntry(rootdir, counter);
+        std::cout << "Entry " << counter << ": " << entry.inode << " " << entry.filename << "\n";
         }
-        //if the v6-file exists, create externalfile and make
-        //the externalfile's contents equal to v6-file
-        else if(strcmp(token, "cpout") == 0){ //
-            char* filename;
-            char* extFile;
+        
+        }//END of cpin
+        
+        // if the v6-file exists, create externalfile and make
+        // the externalfile's contents equal to v6-file
+        else if (strcmp(token, "cpout") == 0)
+        { //
+            char *filename;
+            char *extFile;
 
             filename = strtok(NULL, " ");
             extFile = strtok(NULL, " ");
             cpout(filename, extFile);
         }
-        //will delete the file v6_file from the v6 file system.
-        //Remove all the data blocks of the file, free the
-        //i-node and remove the directory entry.
-        else if(strcmp(token, "rm") == 0){ //
-            char* filename;
+        // will delete the file v6_file from the v6 file system.
+        // Remove all the data blocks of the file, free the
+        // i-node and remove the directory entry.
+        else if (strcmp(token, "rm") == 0)
+        { //
+            char *filename;
             filename = strtok(NULL, " ");
             rm(filename);
         }
-        else {    //command was not recognized
+        else
+        { // command was not recognized
             fprintf(stdout, "Command not recognized, enter a new command\n");
         }
     }
