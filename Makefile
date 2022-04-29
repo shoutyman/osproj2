@@ -1,5 +1,5 @@
-mod-v6: mod-v6.c structures.h
-	g++ -o mod-v6 mod-v6.c
+mod-v6: mod-v6.cpp structures.h
+	g++ -o mod-v6 mod-v6.cpp
 	
 
 all: mod-v6
