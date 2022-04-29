@@ -12,7 +12,6 @@
 #include <iostream>  //for debugging and user interactivity
 #include <fstream>   //for file manipulation
 #include <stdexcept> //for throwing and handling exceptions
-
 #include "./structures.h" //contains the definitions for superblock, i-node, directory, etc.
 #include <unistd.h>       // required for read command
 #include <sys/types.h>    // required for lseek
@@ -23,21 +22,17 @@
 ///////////////////////////////
 inode_type inode_reader(int, inode_type);
 void inode_writer(int, inode_type);
-void setDirectoryEntry(inode_type inode, dir_type entry, int index);
-void addDirectoryEntry(inode_type inode, dir_type entry);
 void removeDirectoryEntry(inode_type inode, int index);
 dir_type getDirectoryEntry(inode_type inode, int index);
+void addDirectoryEntry(inode_type inode, dir_type entry, int index);
 
 ///////////////////////////////
 // GLOBAL VARS ////////////////
 ///////////////////////////////
 
-char fileSystemPath[100];
-char pwd[100];
-int curINodeNumber;
+int entryCntr = 2;
 int fd;                     // file descriptor of the file containing the filesystem
 superblock_type superBlock; // the current superblock, stored in memory
-dir_type directory;
 bool ready; // indicates whether the filesystem is ready for use
 
 
@@ -91,9 +86,7 @@ int getInode()
         superBlock.ninode--;
         nodeNum = superBlock.inode[superBlock.ninode];
 
-    } /* else {
-         //TODO: if the array is empty, repopulate with unallocated inodes from the i-blocks
-     }*/
+    } 
     return nodeNum;
 }
 
@@ -145,13 +138,14 @@ void createRootDirectory()
     root.actime = time(NULL);
     root.modtime = time(NULL);
 
-    setDirectoryEntry(root, first, 0);
-    setDirectoryEntry(root, second, 1);
+    addDirectoryEntry(root, first, 0);
+    addDirectoryEntry(root, second, 1);
 
     inode_writer(0, root);
-    curINodeNumber = 0;
-    strcpy(pwd, "/");
+   
 }
+
+
 
 /*
  * initfs()
@@ -170,7 +164,7 @@ int initfs(const char *filename, int totalDataBlks, int totaliNodeBlks)
         return 0;
     }
 
-    strcpy(fileSystemPath, filename);
+    
 
     //(1)
     // initiate fsize
@@ -205,7 +199,7 @@ int initfs(const char *filename, int totalDataBlks, int totaliNodeBlks)
     //(5)
     // write Super Block to block 1
     // becuase superBlock starts at block 1 and boot block at block 0
-    writeToBlock(1, &superBlock, 1024); //??????????????
+    writeToBlock(1, &superBlock, 1024); 
 
     //(6)
     // create empty i-node blocks
@@ -219,6 +213,8 @@ int initfs(const char *filename, int totalDataBlks, int totaliNodeBlks)
     return fd;
 }
 
+
+
 /*
  * cpin()
  * create a new file called "fileName" in the v6 file system and fill
@@ -229,6 +225,8 @@ int initfs(const char *filename, int totalDataBlks, int totaliNodeBlks)
 int cpin(const char *extfile, const char *fileName)
 {
     int fd2;
+    
+    
     if ((fd2 = open(extfile, O_RDWR | O_CREAT, 0600)) == -1)
     {
         printf("\n File did not open correctly");
@@ -236,6 +234,8 @@ int cpin(const char *extfile, const char *fileName)
     }
     else
     {
+        
+        
         int inodeNumber = getInode();
         inode_type newNode;
         
@@ -261,11 +261,7 @@ int cpin(const char *extfile, const char *fileName)
             totalbytes += bytesRead;
             dataBlockNum = getFreeBlock();
             newNode.addr[addrIndex] = dataBlockNum;
-            
-            writeToBlock(dataBlockNum, buffer, bytesRead);
-           /* lseek(fd, newNode.addr[addrIndex], SEEK_SET);
-            write(fd, buffer, BLOCK_SIZE);
-            */
+            writeToBlock(dataBlockNum, buffer, bytesRead); //Writes to data block, block by block
             addrIndex++;  //increments i-nodes addr array
         }
         newNode.size1 = totalbytes; //The size of the file this inode points to
@@ -274,9 +270,11 @@ int cpin(const char *extfile, const char *fileName)
         dir_type newEntry;
         newEntry.inode = inodeNumber;
         strncpy(newEntry.filename, fileName, sizeof(newEntry.filename));
-        //  put the file in root directory
+       
+        //  put the file in root directory 
         inode_type root = inode_reader(0, root);
-        addDirectoryEntry(root, newEntry);
+        addDirectoryEntry(root, newEntry, entryCntr);
+        entryCntr++;
 
         // write the inode
         inode_writer(inodeNumber, newNode);
@@ -289,6 +287,8 @@ int cpin(const char *extfile, const char *fileName)
     // should never reach here
     return -1;
 }
+
+
 
 
 
@@ -330,6 +330,9 @@ int cpout(const char *destinationPath, const char *filename)
     }
 }
 
+
+
+
 int rm(const char *fileName)
 {
     inode_type rootdir = inode_reader(0, rootdir);
@@ -347,6 +350,17 @@ int rm(const char *fileName)
             addFreeInode(entry.inode);
             dir_type empty_entry;
             removeDirectoryEntry(rootdir, counter);
+            entryCntr--;
+            
+            // Displays contents of root directory
+        std::cout << "Files in root directory:\n";
+        dir_type entry;
+        for (int counter = 0; counter < BLOCK_SIZE / sizeof(dir_type); counter++)
+        {
+        entry = getDirectoryEntry(rootdir, counter);
+        std::cout << "Entry " << counter << ": " << entry.inode << " " << entry.filename << "\n";
+        }
+        
         }
     }
     return 0;
@@ -401,7 +415,7 @@ dir_type getDirectoryEntry(inode_type inode, int index)
 }
 
 // adds the entry to the directory at index index
-void setDirectoryEntry(inode_type inode, dir_type entry, int index)
+void addDirectoryEntry(inode_type inode, dir_type entry, int index)
 {
     if (inode.flags & DIRECTORY)
     {
@@ -418,41 +432,12 @@ void setDirectoryEntry(inode_type inode, dir_type entry, int index)
     }
     else
     {
-        throw std::invalid_argument("Error: argument to setDirectoryEntry() must be a directory.");
+        throw std::invalid_argument("Error: argument to addDirectoryEntry() must be a directory.");
     }
 }
 
-//  adds the entry to the directory in the first open slot
-void addDirectoryEntry(inode_type inode, dir_type entry)
+void removeDirectoryEntry(inode_type inode, int index)
 {
-    const int dirCapacity = ((9 * BLOCK_SIZE) / sizeof(dir_type)); // the number of entries that can fit in a directory
-    if (inode.flags & DIRECTORY)
-    {
-        // find an open index
-        int dirIndex = 2;
-        dir_type currentEntry;
-        currentEntry.inode;
-        do
-        {
-            currentEntry = getDirectoryEntry(inode, dirIndex);
-            if (currentEntry.inode != 0)
-            {
-                dirIndex++;
-            }
-        } while (currentEntry.inode != 0 && dirIndex < dirCapacity);
-        // if the directory is not full, add the directory entry at position dirIndex
-        if (dirIndex < dirCapacity)
-        {
-            setDirectoryEntry(inode, entry, dirIndex);
-        }
-    }
-    else
-    {
-        throw std::invalid_argument("Error: argument to setDirectoryEntry() must be a directory.");
-    }
-}
-
-void removeDirectoryEntry(inode_type inode, int index) {
     const int dirCapacity = BLOCK_SIZE / sizeof(dir_type);
     int blocknum = index / dirCapacity;
     // convert logical inode block to physical address
@@ -484,9 +469,14 @@ int main()
     ready = false;
     bool running = true;
     char input[64] = {" "};
-    char* token;
+    char *token;
 
-    while (running){    //get user input
+    while (running)
+    { // get user input
+       
+       
+        
+        
         fprintf(stdout, "Enter a command:\n");
         scanf(" %[^\n]s", input);
         token = strtok(input, " ");
@@ -520,9 +510,7 @@ int main()
         
         }//END of Initfs
         
-        // creates a new file called v6-file in the v6 file system
-        // and fill the contents of the newly created file with the
-        // contents of the externalfile
+
         else if (strcmp(token, "cpin") == 0)
         {
             char *filename;
@@ -545,8 +533,7 @@ int main()
         
         }//END of cpin
         
-        // if the v6-file exists, create externalfile and make
-        // the externalfile's contents equal to v6-file
+   
         else if (strcmp(token, "cpout") == 0)
         { //
             char *filename;
@@ -556,9 +543,8 @@ int main()
             extFile = strtok(NULL, " ");
             cpout(filename, extFile);
         }
-        // will delete the file v6_file from the v6 file system.
-        // Remove all the data blocks of the file, free the
-        // i-node and remove the directory entry.
+   
+   
         else if (strcmp(token, "rm") == 0)
         { //
             char *filename;
@@ -573,3 +559,48 @@ int main()
 
     return 0;
 }
+/////////////////////////////////////////////////////////////////////////////////
+// SYSTEM TESTING MAIN FUNCTION /////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////
+/*
+int main()
+{
+    int fsystem = initfs("my-v6", 50, 10);
+    // verifying root directory integrity
+    inode_type rootdir = inode_reader(0, rootdir);
+    std::cout << "root flags: " << rootdir.flags << "\n";
+    std::cout << "address of root directory: " << rootdir.addr[0] << "\n";
+    // add file to root directory
+    cpin("test.txt", "test");
+    //  get contents of root directory
+    std::cout << "Files in root directory:\n";
+    dir_type entry;
+    for (int counter = 0; counter < BLOCK_SIZE / sizeof(dir_type); counter++)
+    {
+        entry = getDirectoryEntry(rootdir, counter);
+        std::cout << "Entry " << counter << ": " << entry.inode << " " << entry.filename << "\n";
+    }
+    std::cout << "copying garbage to filesystem\n";
+    cpin("garbage.txt", "garbage");
+    //  get contents of root directory
+    std::cout << "Files in root directory:\n";
+    for (int counter = 0; counter < BLOCK_SIZE / sizeof(dir_type); counter++)
+    {
+        entry = getDirectoryEntry(rootdir, counter);
+        std::cout << "Entry " << counter << ": " << entry.inode << " " << entry.filename << "\n";
+    }
+
+    std::cout << "Testing cpout now\n";
+    std::cout << cpout("newGarbage", "garbage") << "\n";
+
+    std::cout << "removing garbage file\n";
+    rm("garbage");
+    //  get contents of root directory
+    std::cout << "Files in root directory:\n";
+    for (int counter = 0; counter < BLOCK_SIZE / sizeof(dir_type); counter++)
+    {
+        entry = getDirectoryEntry(rootdir, counter);
+        std::cout << "Entry " << counter << ": " << entry.inode << " " << entry.filename << "\n";
+    }
+}
+*/
